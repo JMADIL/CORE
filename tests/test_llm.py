@@ -15,7 +15,7 @@ async def test_connection():
         # The new google-genai SDK uses client.aio for async calls
         client = genai.Client(api_key=settings.GOOGLE_API_KEY)
         response = await client.aio.models.generate_content(
-            model=settings.GEMINI_MODEL,
+            model=settings.LLM_MODEL,
             contents="Hello! Confirm connection."
         )
         print("Success! Response from Gemini:")

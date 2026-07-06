@@ -2,6 +2,7 @@ from langgraph.graph import StateGraph, START, END
 from src.graph.state import AgentState
 from src.graph.nodes.supervisor import supervisor_node
 from src.graph.nodes.tool_agent import tool_agent_node
+from src.graph.nodes.responder import responder_node
 
 def route_next(state: AgentState):
     """
@@ -10,7 +11,7 @@ def route_next(state: AgentState):
     next_action = state.get("next_action")
     if next_action == "tool_agent":
         return "tool_agent"
-    return "end"
+    return "responder"
 
 def build_graph():
     """
@@ -19,9 +20,10 @@ def build_graph():
     # 1. Initialize StateGraph with our custom AgentState
     builder = StateGraph(AgentState)
     
-    # 2. Add the supervisor and tool agent nodes
+    # 2. Add the supervisor, tool agent, and responder nodes
     builder.add_node("supervisor", supervisor_node)
     builder.add_node("tool_agent", tool_agent_node)
+    builder.add_node("responder", responder_node)
     
     # 3. Define the entry point
     builder.add_edge(START, "supervisor")
@@ -32,12 +34,15 @@ def build_graph():
         route_next,
         {
             "tool_agent": "tool_agent",
-            "end": END
+            "responder": "responder"
         }
     )
     
     # 5. Route tool agent execution back to the supervisor
     builder.add_edge("tool_agent", "supervisor")
     
-    # 6. Compile and return the graph
+    # 6. Route responder execution to END
+    builder.add_edge("responder", END)
+    
+    # 7. Compile and return the graph
     return builder.compile()

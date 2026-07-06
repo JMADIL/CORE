@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>SSE Stream Test</title>
+</head>
+<body>
+  <h1>Stream Output:</h1>
+  <pre id="output"></pre>
+  <script>
+    async function run() {
+      const output = document.getElementById('output');
+      output.textContent += "Starting fetch...\n";
+      try {
+        const response = await fetch('http://localhost:8000/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ message: 'hi', session_id: 'test-browser' })
+        });
+        output.textContent += "Headers received. Status: " + response.status + "\n";
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) {
+            output.textContent += "\n--- Stream Done ---\n";
+            break;
+          }
+          const chunk = decoder.decode(value, { stream: true });
+          output.textContent += chunk;
+        }
+      } catch (err) {
+        output.textContent += "\nError: " + err.message + "\n";
+      }
+    }
+    run();
+  </script>
+</body>
+</html>

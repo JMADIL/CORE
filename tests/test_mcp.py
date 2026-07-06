@@ -5,39 +5,12 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_core.messages import HumanMessage
 from src.graph.builder import build_graph
 
+from src.graph.nodes.tool_agent import get_mcp_server_configs
+
 async def test_standalone_mcp():
     print("\n--- 1. Testing Standalone MCP Tool Discovery ---")
-    env = os.environ.copy()
-    node_dir = "/home/ajamoun/.local/share/fnm/node-versions/v24.18.0/installation/bin"
-    uv_dir = "/home/ajamoun/.local/bin"
-    env["PATH"] = f"{node_dir}:{uv_dir}:{env.get('PATH', '')}"
-    
-    configs = {
-        "time": {
-            "transport": "stdio",
-            "command": "/home/ajamoun/.local/bin/uvx",
-            "args": ["mcp-server-time"],
-            "env": env
-        },
-        "weather": {
-            "transport": "stdio",
-            "command": "/home/ajamoun/.local/share/fnm/node-versions/v24.18.0/installation/bin/npx",
-            "args": ["-y", "@h1deya/mcp-server-weather"],
-            "env": env
-        },
-        "puppeteer": {
-            "transport": "stdio",
-            "command": "/home/ajamoun/.local/share/fnm/node-versions/v24.18.0/installation/bin/npx",
-            "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
-            "env": env
-        },
-        "sequential-thinking": {
-            "transport": "stdio",
-            "command": "/home/ajamoun/.local/share/fnm/node-versions/v24.18.0/installation/bin/npx",
-            "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-            "env": env
-        }
-    }
+    configs = get_mcp_server_configs()
+    print(f"Active servers to test: {list(configs.keys())}")
     
     client = MultiServerMCPClient(configs)
     tools = await client.get_tools()

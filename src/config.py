@@ -4,11 +4,10 @@ class Settings(BaseSettings):
     GOOGLE_API_KEY: str = "placeholder"
     OPENROUTER_API_KEY: str = "placeholder"
     OPENROUTER_BASE_URL: str = "https://openrouter.ai/api/v1"
-    GEMINI_MODEL: str = "google/gemini-2.0-flash-exp:free"
+    LLM_MODEL: str = "meta-llama/llama-3.3-70b-instruct:free"
     GOOGLE_MAPS_API_KEY: str = ""
     MINIMAX_API_KEY: str = ""
-    MCP_SERVER_COMMAND: str = "python"
-    MCP_SERVER_SCRIPT: str = "src/mcp_server/server.py"
+    MINIMAX_API_HOST: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
