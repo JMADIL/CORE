@@ -1,4 +1,6 @@
 import os
+import sys
+import shutil
 import logging
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -7,75 +9,97 @@ from src.graph.state import AgentState
 
 logger = logging.getLogger("tool_agent")
 
-# Setup server configurations
 def get_mcp_server_configs() -> dict:
+    """
+    Returns stdio configurations for active MCP servers.
+    Dynamically locates node, npx, and python executables.
+    """
     configs = {}
     env = os.environ.copy()
     
-    # Prepend fnm node bin and uv bin to PATH so sub-processes can run node/uv/uvx
-    node_dir = "/home/ajamoun/.local/share/fnm/node-versions/v24.18.0/installation/bin"
-    uv_dir = "/home/ajamoun/.local/bin"
-    env["PATH"] = f"{node_dir}:{uv_dir}:{env.get('PATH', '')}"
+    node_bin = shutil.which("node") or "/home/ajamoun/.nvm/versions/node/v22.23.1/bin/node"
+    npx_bin = shutil.which("npx") or "/home/ajamoun/.nvm/versions/node/v22.23.1/bin/npx"
+    python_bin = sys.executable
     
-    # 1. Weather server (credential-free)
-    configs["weather"] = {
-        "transport": "stdio",
-        "command": f"{node_dir}/npx",
-        "args": ["-y", "@h1deya/mcp-server-weather"],
-        "env": env
-    }
+    # 1. Weather server
+    weather_cached = "/home/ajamoun/.npm/_npx/bfb2db71e8e3f82e/node_modules/.bin/mcp-server-weather"
+    if os.path.exists(weather_cached):
+        configs["weather"] = {
+            "transport": "stdio",
+            "command": node_bin,
+            "args": [weather_cached],
+            "env": env
+        }
+    elif npx_bin:
+        configs["weather"] = {
+            "transport": "stdio",
+            "command": npx_bin,
+            "args": ["-y", "@h1deya/mcp-server-weather"],
+            "env": env
+        }
     
-    # 2. Time server (credential-free)
+    # 2. Time server (powered by python mcp_server_time)
     configs["time"] = {
         "transport": "stdio",
-        "command": f"{uv_dir}/uvx",
-        "args": ["mcp-server-time"],
+        "command": python_bin,
+        "args": ["-m", "mcp_server_time"],
         "env": env
     }
     
-    # 3. Research MCP (credential-free)
-    configs["research"] = {
-        "transport": "stdio",
-        "command": f"{node_dir}/npx",
-        "args": ["-y", "researchmcp", "arxiv"],
-        "env": env
-    }
+    # 3. Research MCP
+    research_cached = "/home/ajamoun/.npm/_npx/efb9a46ff596f68c/node_modules/.bin/researchmcp"
+    if os.path.exists(research_cached):
+        configs["research"] = {
+            "transport": "stdio",
+            "command": node_bin,
+            "args": [research_cached, "arxiv"],
+            "env": env
+        }
+    elif npx_bin:
+        configs["research"] = {
+            "transport": "stdio",
+            "command": npx_bin,
+            "args": ["-y", "researchmcp", "arxiv"],
+            "env": env
+        }
     
-    # 4. Google Maps server (requires key)
-    if settings.GOOGLE_MAPS_API_KEY and settings.GOOGLE_MAPS_API_KEY != "placeholder":
+    # 4. Google Maps server (optional, requires API key)
+    if settings.GOOGLE_MAPS_API_KEY and settings.GOOGLE_MAPS_API_KEY != "placeholder" and npx_bin:
         maps_env = env.copy()
         maps_env["GOOGLE_MAPS_API_KEY"] = settings.GOOGLE_MAPS_API_KEY
         configs["google-maps"] = {
             "transport": "stdio",
-            "command": f"{node_dir}/npx",
+            "command": npx_bin,
             "args": ["-y", "@modelcontextprotocol/server-google-maps"],
             "env": maps_env
         }
         
-    # 5. Puppeteer server — disabled (crashes on startup without Chrome)
-    # configs["puppeteer"] = {
-    #     "transport": "stdio",
-    #     "command": f"{node_dir}/npx",
-    #     "args": ["-y", "@modelcontextprotocol/server-puppeteer"],
-    #     "env": env
-    # }
-    
-    # 6. Sequential Thinking server (credential-free)
-    configs["sequential-thinking"] = {
-        "transport": "stdio",
-        "command": f"{node_dir}/npx",
-        "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
-        "env": env
-    }
-    
-    # 7. MiniMax server (requires key and host)
-    if settings.MINIMAX_API_KEY and settings.MINIMAX_API_KEY != "placeholder" and settings.MINIMAX_API_HOST:
+    # 5. Sequential Thinking server
+    seq_cached = "/home/ajamoun/.npm/_npx/de2bd410102f5eda/node_modules/.bin/mcp-server-sequential-thinking"
+    if os.path.exists(seq_cached):
+        configs["sequential-thinking"] = {
+            "transport": "stdio",
+            "command": node_bin,
+            "args": [seq_cached],
+            "env": env
+        }
+    elif npx_bin:
+        configs["sequential-thinking"] = {
+            "transport": "stdio",
+            "command": npx_bin,
+            "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"],
+            "env": env
+        }
+        
+    # 6. MiniMax server (optional, requires key and host)
+    uvx_bin = shutil.which("uvx")
+    if settings.MINIMAX_API_KEY and settings.MINIMAX_API_KEY != "placeholder" and settings.MINIMAX_API_HOST and uvx_bin:
         minimax_env = env.copy()
         minimax_env["MINIMAX_API_KEY"] = settings.MINIMAX_API_KEY
         minimax_env["MINIMAX_API_HOST"] = settings.MINIMAX_API_HOST
         configs["minimax"] = {
             "transport": "stdio",
-            "command": f"{uv_dir}/uvx",
+            "command": uvx_bin,
             "args": ["minimax-mcp"],
             "env": minimax_env
         }
