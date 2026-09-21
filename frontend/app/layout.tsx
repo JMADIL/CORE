@@ -50,7 +50,14 @@ export default function RootLayout({
       className={`${outfit.variable} ${inter.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-black text-[#ECECED] font-sans antialiased selection:bg-[#C3982C]/30 selection:text-white flex flex-col">
+        {/* Ambient fog auras */}
+        <div className="fog-auras" aria-hidden="true" />
+        <div className="fog-depth" aria-hidden="true" />
         {children}
+        {/* Film grain overlay */}
+        <div className="grain-container" aria-hidden="true">
+          <div className="grain-overlay" />
+        </div>
       </body>
     </html>
   );

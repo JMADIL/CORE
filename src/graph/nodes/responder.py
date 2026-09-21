@@ -20,7 +20,7 @@ async def responder_node(state: AgentState) -> dict:
     else:
         model_name = settings.LLM_MODEL
         if "/" in model_name or "gemini" not in model_name.lower():
-            model_name = "gemini-2.0-flash"
+            model_name = "gemini-3.6-flash"
         llm = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=settings.GOOGLE_API_KEY,

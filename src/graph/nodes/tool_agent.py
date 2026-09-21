@@ -125,7 +125,7 @@ async def tool_agent_node(state: AgentState) -> dict:
         from langchain_google_genai import ChatGoogleGenerativeAI
         model_name = settings.LLM_MODEL
         if "/" in model_name or "gemini" not in model_name.lower():
-            model_name = "gemini-2.0-flash"
+            model_name = "gemini-3.6-flash"
         llm = ChatGoogleGenerativeAI(
             model=model_name,
             google_api_key=settings.GOOGLE_API_KEY,
@@ -143,90 +143,82 @@ async def tool_agent_node(state: AgentState) -> dict:
         
     # 3. Connect to MCP client and get tools
     client = MultiServerMCPClient(server_configs)
-    try:
-        tools = await client.get_tools()
-        
-        # Mutate tool names to replace dashes with underscores for Gemini compatibility
-        for tool in tools:
-            if "-" in tool.name:
-                original_name = tool.name
-                mutated_name = original_name.replace("-", "_")
-                tool.name = mutated_name
-                logger.info(f"Renamed tool '{original_name}' to '{mutated_name}' for Gemini compatibility")
-                
-        tool_names = [tool.name for tool in tools]
-        logger.info(f"Discovered {len(tools)} tools from MCP servers: {tool_names}")
-        
-        if not tools:
-            return {
-                "messages": [AIMessage(content="[Tool Agent] Connected but no tools were discovered.")],
-                "active_agent": "tool_agent"
-            }
+    tools = await client.get_tools()
+    
+    # Mutate tool names to replace dashes with underscores for Gemini compatibility
+    for tool in tools:
+        if "-" in tool.name:
+            original_name = tool.name
+            mutated_name = original_name.replace("-", "_")
+            tool.name = mutated_name
+            logger.info(f"Renamed tool '{original_name}' to '{mutated_name}' for Gemini compatibility")
             
-        # 4. Bind tools to LLM
-        llm_with_tools = llm.bind_tools(tools)
+    tool_names = [tool.name for tool in tools]
+    logger.info(f"Discovered {len(tools)} tools from MCP servers: {tool_names}")
+    
+    if not tools:
+        return {
+            "messages": [AIMessage(content="[Tool Agent] Connected but no tools were discovered.")],
+            "active_agent": "tool_agent"
+        }
         
-        # 5. Prepend system instruction to guide coordinate estimation for weather tools
-        from langchain_core.messages import SystemMessage
-        system_instruction = SystemMessage(content=(
-            "You are a helpful tool-calling assistant. When using weather tools like 'get_forecast' "
-            "or 'get_alerts' which require latitude and longitude, if the user specifies a city name "
-            "(e.g., 'Chicago', 'Tokyo', 'Paris') without coordinates, use your internal knowledge "
-            "to estimate the latitude and longitude of that city and call the tool using those coordinates."
-        ))
+    # 4. Bind tools to LLM
+    llm_with_tools = llm.bind_tools(tools)
+    
+    # 5. Prepend system instruction to guide coordinate estimation for weather tools
+    from langchain_core.messages import SystemMessage
+    system_instruction = SystemMessage(content=(
+        "You are a helpful tool-calling assistant. When using weather tools like 'get_forecast' "
+        "or 'get_alerts' which require latitude and longitude, if the user specifies a city name "
+        "(e.g., 'Chicago', 'Tokyo', 'Paris') without coordinates, use your internal knowledge "
+        "to estimate the latitude and longitude of that city and call the tool using those coordinates."
+    ))
+    
+    # Call LLM with instructions and message history
+    response = await llm_with_tools.ainvoke([system_instruction] + state["messages"])
+    
+    new_messages = [response]
+    
+    # 6. Execute tool calls if any
+    if response.tool_calls:
+        # Convert tools to a map for easy lookup by name
+        tools_map = {tool.name: tool for tool in tools}
         
-        # Call LLM with instructions and message history
-        response = await llm_with_tools.ainvoke([system_instruction] + state["messages"])
-        
-        new_messages = [response]
-        
-        # 6. Execute tool calls if any
-        if response.tool_calls:
-            # Convert tools to a map for easy lookup by name
-            tools_map = {tool.name: tool for tool in tools}
-            
-            for tool_call in response.tool_calls:
-                tool_name = tool_call["name"]
-                logger.info(f"Executing tool: {tool_name}")
-                if tool_name in tools_map:
-                    tool = tools_map[tool_name]
-                    try:
-                        tool_output = await tool.ainvoke(tool_call["args"])
-                        new_messages.append(ToolMessage(
-                            content=str(tool_output),
-                            name=tool_name,
-                            tool_call_id=tool_call["id"]
-                        ))
-                    except Exception as e:
-                        logger.error(f"Tool execution error for {tool_name}: {e}")
-                        new_messages.append(ToolMessage(
-                            content=f"Error executing tool: {str(e)}",
-                            name=tool_name,
-                            tool_call_id=tool_call["id"],
-                            status="error"
-                        ))
-                else:
+        for tool_call in response.tool_calls:
+            tool_name = tool_call["name"]
+            logger.info(f"Executing tool: {tool_name}")
+            if tool_name in tools_map:
+                tool = tools_map[tool_name]
+                try:
+                    tool_output = await tool.ainvoke(tool_call["args"])
                     new_messages.append(ToolMessage(
-                        content=f"Error: Tool '{tool_name}' not found.",
+                        content=str(tool_output),
+                        name=tool_name,
+                        tool_call_id=tool_call["id"]
+                    ))
+                except Exception as e:
+                    logger.error(f"Tool execution error for {tool_name}: {e}")
+                    new_messages.append(ToolMessage(
+                        content=f"Error executing tool: {str(e)}",
                         name=tool_name,
                         tool_call_id=tool_call["id"],
                         status="error"
                     ))
-        else:
-            # If LLM didn't call any tools, add a fallback message
-            logger.warning("LLM did not produce any tool_calls despite being routed to tool_agent")
-            new_messages.append(AIMessage(content="[Tool Agent] Checked tools but decided no action was required."))
-    finally:
-        # Clean up MCP server subprocess connections
-        for server_name in list(server_configs.keys()):
-            try:
-                if hasattr(client, '_sessions') and server_name in client._sessions:
-                    await client._sessions[server_name].__aexit__(None, None, None)
-            except Exception:
-                pass
-            
+            else:
+                new_messages.append(ToolMessage(
+                    content=f"Error: Tool '{tool_name}' not found.",
+                    name=tool_name,
+                    tool_call_id=tool_call["id"],
+                    status="error"
+                ))
+    else:
+        # If LLM didn't call any tools, add a fallback message
+        logger.warning("LLM did not produce any tool_calls despite being routed to tool_agent")
+        new_messages.append(AIMessage(content="[Tool Agent] Checked tools but decided no action was required."))
+        
     # Return updated fields
     return {
         "messages": new_messages,
         "active_agent": "tool_agent"
     }
+
