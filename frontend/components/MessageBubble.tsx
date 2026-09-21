@@ -5,7 +5,6 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Message } from "../hooks/useSSEStream";
 import { ThoughtProcess } from "./ThoughtProcess";
-import { ArrowUpRight } from "lucide-react";
 
 interface MessageBubbleProps {
   message: Message;

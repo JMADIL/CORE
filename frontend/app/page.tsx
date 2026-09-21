@@ -3,7 +3,6 @@
 import React, { useEffect, useRef } from "react";
 import { useSSEStream } from "../hooks/useSSEStream";
 import { Navigation } from "../components/Navigation";
-import { AgentBadge } from "../components/AgentBadge";
 import { ChatWindow } from "../components/ChatWindow";
 import { MessageBubble } from "../components/MessageBubble";
 import { ChatInput } from "../components/ChatInput";

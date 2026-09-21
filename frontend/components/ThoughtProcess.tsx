@@ -43,7 +43,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
             className="overflow-hidden border-t border-[#e3e0da]/10"
           >
             <div className="p-4 font-display text-[12px] text-[#e3e0da]/80 flex flex-col gap-3 leading-relaxed">
-              {thoughts.map((node, index) => {
+              {thoughts.map((node) => {
                 const isExpanded = expandedNodes[node.id];
 
                 if (node.type === "agent_state") {
@@ -75,7 +75,7 @@ export function ThoughtProcess({ thoughts }: ThoughtProcessProps) {
                         </span>
                       </div>
                       
-                      {isExpanded && node.input && (
+                      {isExpanded && !!node.input && (
                         <div className="ml-4 pl-3 border-l border-[#e3e0da]/10 py-1">
                           <pre className="bg-black/30 p-2.5 rounded border border-[#e3e0da]/10 text-[10px] overflow-x-auto text-[#e3e0da]/90 max-w-full font-mono">
                             {JSON.stringify(node.input, null, 2)}

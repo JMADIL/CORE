@@ -5,7 +5,7 @@ export interface ThoughtNode {
   id: string;
   type: "agent_state" | "tool_call" | "tool_result";
   name: string;
-  input?: any;
+  input?: unknown;
   output?: string;
   timestamp: number;
 }
@@ -23,18 +23,19 @@ export function useSSEStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId, setSessionId] = useState<string>("");
+  const [sessionId, setSessionId] = useState<string>(() =>
+    Math.random().toString(36).substring(2, 15)
+  );
 
-  const sessionIdRef = useRef<string>("");
+  const sessionIdRef = useRef<string>(sessionId);
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  // Initialize unique session ID on mount
   useEffect(() => {
-    const newSessionId = Math.random().toString(36).substring(2, 15);
-    sessionIdRef.current = newSessionId;
-    setSessionId(newSessionId);
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
 
-    // Abort active connections on unmount
+  // Abort active connections on unmount
+  useEffect(() => {
     return () => {
       abortControllerRef.current?.abort();
     };
@@ -196,8 +197,9 @@ export function useSSEStream() {
           }
         }
       }
-    } catch (err: any) {
-      if (err.name === "AbortError") {
+    } catch (err: unknown) {
+      const error = err instanceof Error ? err : new Error(String(err));
+      if (error.name === "AbortError") {
         console.log("[SSE Hook] SSE stream connection aborted by client.");
         return;
       }
@@ -208,7 +210,7 @@ export function useSSEStream() {
         if (targetIdx !== -1) {
           updated[targetIdx] = {
             ...updated[targetIdx],
-            content: updated[targetIdx].content + `\n\n[Connection Error: ${err.message}]`,
+            content: updated[targetIdx].content + `\n\n[Connection Error: ${error.message}]`,
           };
         }
         return updated;
