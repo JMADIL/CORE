@@ -36,6 +36,22 @@ session_store: Dict[str, List[BaseMessage]] = {}
 # Compile the LangGraph
 graph = build_graph()
 
+@app.get("/")
+async def root():
+    """
+    Root endpoint providing API information and available routes.
+    """
+    return {
+        "status": "ok",
+        "message": "Multi-Agent Chatbot Core API is running",
+        "endpoints": {
+            "health": "/health",
+            "chat": "/api/chat",
+            "docs": "/docs"
+        }
+    }
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
     """
