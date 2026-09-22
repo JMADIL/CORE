@@ -112,14 +112,20 @@ async def tool_agent_node(state: AgentState) -> dict:
     invokes the LLM to get tool calls, executes them, and returns results.
     """
     # 1. Instantiate the LLM
-    if settings.OPENROUTER_API_KEY and settings.OPENROUTER_API_KEY != "placeholder":
+    has_openrouter = (
+        bool(settings.OPENROUTER_API_KEY)
+        and settings.OPENROUTER_API_KEY.lower() not in ["placeholder", "none", ""]
+        and settings.OPENROUTER_API_KEY.startswith("sk-or-")
+    )
+    if has_openrouter:
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(
             model=settings.LLM_MODEL,
             api_key=settings.OPENROUTER_API_KEY,
             base_url=settings.OPENROUTER_BASE_URL,
             temperature=0.0,
-            max_tokens=1000
+            max_tokens=1000,
+            default_headers={"HTTP-Referer": "https://github.com/JMADIL/CORE", "X-Title": "Core Agent"}
         )
     else:
         from langchain_google_genai import ChatGoogleGenerativeAI

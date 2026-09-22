@@ -1,3 +1,4 @@
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
@@ -10,5 +11,14 @@ class Settings(BaseSettings):
     MINIMAX_API_HOST: str = ""
 
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    @field_validator("*", mode="before")
+    @classmethod
+    def sanitize_strings(cls, v):
+        if isinstance(v, str):
+            v = v.strip().strip("'").strip('"').strip()
+            if v.startswith("Bearer "):
+                v = v[7:].strip()
+        return v
 
 settings = Settings()

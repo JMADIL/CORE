@@ -7,7 +7,12 @@ async def responder_node(state: AgentState) -> dict:
     Responder node that generates the final conversational response based on all the message history.
     """
     # 1. Instantiate the LLM
-    if settings.OPENROUTER_API_KEY and settings.OPENROUTER_API_KEY != "placeholder":
+    has_openrouter = (
+        bool(settings.OPENROUTER_API_KEY)
+        and settings.OPENROUTER_API_KEY.lower() not in ["placeholder", "none", ""]
+        and settings.OPENROUTER_API_KEY.startswith("sk-or-")
+    )
+    if has_openrouter:
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(
             model=settings.LLM_MODEL,
@@ -15,7 +20,8 @@ async def responder_node(state: AgentState) -> dict:
             base_url=settings.OPENROUTER_BASE_URL,
             temperature=0.7,
             max_tokens=1500,
-            streaming=True
+            streaming=True,
+            default_headers={"HTTP-Referer": "https://github.com/JMADIL/CORE", "X-Title": "Core Agent"}
         )
     else:
         model_name = settings.LLM_MODEL
