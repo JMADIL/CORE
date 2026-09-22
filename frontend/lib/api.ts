@@ -3,11 +3,14 @@
  * Handles SSE streaming connections for real-time chat.
  */
 
+const RAILWAY_API_URL = "https://web-production-71a3c.up.railway.app";
+
 const API_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL ||
-  (typeof window !== "undefined"
+  (typeof window !== "undefined" &&
+  (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1")
     ? `${window.location.protocol}//${window.location.hostname}:8000`
-    : "http://localhost:8000");
+    : RAILWAY_API_URL);
 
 /**
  * Send a chat message to the backend and return the raw Response
