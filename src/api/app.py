@@ -57,9 +57,14 @@ async def health_check():
     """
     Returns the API health status and the configured LLM model.
     """
+    has_or = bool(settings.OPENROUTER_API_KEY) and settings.OPENROUTER_API_KEY.startswith("sk-or-")
+    has_goog = bool(settings.GOOGLE_API_KEY) and settings.GOOGLE_API_KEY.startswith("AIzaSy")
     return HealthResponse(
         status="ok",
-        model=settings.LLM_MODEL
+        model=settings.LLM_MODEL,
+        openrouter_configured=has_or,
+        openrouter_key_prefix=settings.OPENROUTER_API_KEY[:7] if settings.OPENROUTER_API_KEY else "EMPTY",
+        google_key_prefix=settings.GOOGLE_API_KEY[:6] if settings.GOOGLE_API_KEY else "EMPTY",
     )
 
 @app.post("/api/chat")

@@ -14,3 +14,6 @@ class HealthResponse(BaseModel):
     """
     status: str
     model: str
+    openrouter_configured: Optional[bool] = None
+    openrouter_key_prefix: Optional[str] = None
+    google_key_prefix: Optional[str] = None
