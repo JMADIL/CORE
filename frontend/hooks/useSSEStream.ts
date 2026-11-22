@@ -1,231 +1,254 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import { sendChatMessage } from "../lib/api";
+import { sendChatMessage, cancelChatRequest } from "../lib/api";
+import { readSSE } from "../lib/sse";
 
-export interface ThoughtNode {
-  id: string;
-  type: "agent_state" | "tool_call" | "tool_result";
-  name: string;
-  input?: unknown;
-  output?: string;
-  timestamp: number;
+import type { Message, ThoughtNode, ActiveAgent } from "../types/chat";
+
+const agents: string[] = ["supervisor", "tool_agent", "responder"];
+
+interface PendingTurn {
+  sessionId: string;
+  requestId: string;
+  response: Promise<Response>;
+  stopping: boolean;
+  finished: boolean;
 }
 
-export interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  thoughts: ThoughtNode[];
+function cancelDetachedTurn(
+  turn: PendingTurn | null,
+  controller: AbortController | null,
+) {
+  if (!controller) return;
+  if (!turn) {
+    controller.abort();
+    return;
+  }
+  // Wait for response headers: the backend has then claimed the request lease.
+  void turn.response
+    .then(() => cancelChatRequest(turn.sessionId, turn.requestId))
+    .catch(() => {})
+    .finally(() => controller.abort());
 }
-
-export type ActiveAgent = "supervisor" | "tool_agent" | "responder" | "idle";
 
 export function useSSEStream() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [activeAgent, setActiveAgent] = useState<ActiveAgent>("idle");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [sessionId, setSessionId] = useState<string>(() =>
-    Math.random().toString(36).substring(2, 15)
+  const [isStopping, setIsStopping] = useState(false);
+  const [stopError, setStopError] = useState("");
+  // Allocate IDs only in event handlers, avoiding server/client hydration differences.
+  const [sessionId, setSessionId] = useState("");
+  const sessionRef = useRef("");
+  const controllerRef = useRef<AbortController | null>(null);
+  const turnRef = useRef<PendingTurn | null>(null);
+
+  useEffect(
+    () => () => {
+      const previous = controllerRef.current;
+      const turn = turnRef.current;
+      controllerRef.current = null;
+      turnRef.current = null;
+      cancelDetachedTurn(turn, previous);
+    },
+    [],
   );
 
-  const sessionIdRef = useRef<string>(sessionId);
-  const abortControllerRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    sessionIdRef.current = sessionId;
-  }, [sessionId]);
-
-  // Abort active connections on unmount
-  useEffect(() => {
-    return () => {
-      abortControllerRef.current?.abort();
-    };
-  }, []);
-
-  const clearChat = useCallback(() => {
-    // Abort any active SSE stream request
-    abortControllerRef.current?.abort();
-    abortControllerRef.current = null;
-
-    setMessages([]);
+  const loadSession = useCallback((id: string, initial: Message[]) => {
+    const previous = controllerRef.current;
+    const turn = turnRef.current;
+    controllerRef.current = null;
+    turnRef.current = null;
+    cancelDetachedTurn(turn, previous);
+    sessionRef.current = id;
+    setSessionId(id);
+    setMessages(initial);
     setActiveAgent("idle");
     setIsStreaming(false);
-    const newSessionId = Math.random().toString(36).substring(2, 15);
-    sessionIdRef.current = newSessionId;
-    setSessionId(newSessionId);
+    setIsStopping(false);
+    setStopError("");
+  }, []);
+
+  const clearChat = useCallback(() => loadSession("", []), [loadSession]);
+
+  const stopStream = useCallback(async () => {
+    const previous = controllerRef.current;
+    const turn = turnRef.current;
+    if (!previous || !turn || turn.stopping) return;
+    turn.stopping = true;
+    setIsStopping(true);
+    setStopError("");
+    let accepted = false;
+    try {
+      await turn.response;
+      accepted = true;
+      await cancelChatRequest(turn.sessionId, turn.requestId);
+    } catch {
+      if (accepted && !turn.finished && controllerRef.current === previous) {
+        turn.stopping = false;
+        setIsStopping(false);
+        setStopError("Could not stop the response. Please try again.");
+        return;
+      }
+    }
+    if (controllerRef.current === previous) {
+      controllerRef.current = null;
+      turnRef.current = null;
+      previous.abort();
+      setActiveAgent("idle");
+      setIsStreaming(false);
+      setIsStopping(false);
+    }
   }, []);
 
   const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isStreaming) return;
-
-    // Abort any previous active stream just in case
-    abortControllerRef.current?.abort();
+    // Ref guards duplicate submissions before React's next render.
+    if (!text.trim() || controllerRef.current) return;
     const controller = new AbortController();
-    abortControllerRef.current = controller;
-
-    setIsStreaming(true);
-    setActiveAgent("supervisor");
-
-    // 1. Add the user message
-    const userMsgId = Math.random().toString(36).substring(7);
-    const userMsg: Message = {
-      id: userMsgId,
-      role: "user",
-      content: text,
-      thoughts: [],
-    };
-
-    // 2. Add placeholder assistant message
-    const assistantMsgId = Math.random().toString(36).substring(7);
-    const assistantMsg: Message = {
-      id: assistantMsgId,
-      role: "assistant",
-      content: "",
-      thoughts: [],
-    };
-
-    setMessages((prev) => [...prev, userMsg, assistantMsg]);
-
-    try {
-      const response = await sendChatMessage(text, sessionIdRef.current, controller.signal);
-
-      const reader = response.body?.getReader();
-      if (!reader) {
-        throw new Error("Response body is not readable.");
-      }
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let eventName = "";
-      let dataBuffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-
-          if (trimmed === "") {
-            // End of SSE block: dispatch message
-            if (dataBuffer) {
-              try {
-                const parsedData = JSON.parse(dataBuffer);
-                const currentEvent = eventName;
-                console.log("[SSE Hook] Received Event:", currentEvent, parsedData);
-                
-                // 1. Handle side-effects (state changes) outside of the messages state updater
-                if (currentEvent === "agent_state") {
-                  setActiveAgent(parsedData.active_agent as ActiveAgent);
-                } else if (currentEvent === "done" || currentEvent === "error") {
-                  setIsStreaming(false);
-                  setActiveAgent("idle");
-                }
-
-                // 2. Perform pure messages array update
-                setMessages((prev) => {
-                  const updated = [...prev];
-                  const targetIdx = updated.findIndex((m) => m.id === assistantMsgId);
-                  console.log("[SSE Hook Callback] event:", currentEvent, "assistantMsgId:", assistantMsgId, "targetIdx:", targetIdx, "current messages:", JSON.stringify(prev));
-                  if (targetIdx === -1) return prev;
-                  
-                  const targetMsg = { ...updated[targetIdx] };
-                  const newThoughts = [...targetMsg.thoughts];
- 
-                  switch (currentEvent) {
-                    case "agent_state":
-                      const agent = parsedData.active_agent as ActiveAgent;
-                      newThoughts.push({
-                        id: Math.random().toString(36).substring(7),
-                        type: "agent_state",
-                        name: agent,
-                        timestamp: Date.now(),
-                      });
-                      break;
- 
-                    case "tool_call":
-                      newThoughts.push({
-                        id: Math.random().toString(36).substring(7),
-                        type: "tool_call",
-                        name: parsedData.tool,
-                        input: parsedData.input,
-                        timestamp: Date.now(),
-                      });
-                      break;
- 
-                    case "tool_result":
-                      newThoughts.push({
-                        id: Math.random().toString(36).substring(7),
-                        type: "tool_result",
-                        name: parsedData.tool,
-                        output: parsedData.output,
-                        timestamp: Date.now(),
-                      });
-                      break;
- 
-                    case "token":
-                      targetMsg.content += parsedData.token;
-                      console.log("[SSE Hook] Updated message content to:", targetMsg.content);
-                      break;
- 
-                    case "done":
-                      break;
- 
-                    case "error":
-                      targetMsg.content += `\n\n[Error: ${parsedData.detail}]`;
-                      break;
-                  }
- 
-                  targetMsg.thoughts = newThoughts;
-                  updated[targetIdx] = targetMsg;
-                  console.log("[SSE Hook Callback] returning updated:", JSON.stringify(updated));
-                  return updated;
-                });
-              } catch (e) {
-                console.error("Failed to parse SSE JSON:", e);
-              }
-            }
-            eventName = "";
-            dataBuffer = "";
-          } else if (trimmed.startsWith("event:")) {
-            eventName = trimmed.substring(6).trim();
-          } else if (trimmed.startsWith("data:")) {
-            dataBuffer += trimmed.substring(5).trim();
-          }
-        }
-      }
-    } catch (err: unknown) {
-      const error = err instanceof Error ? err : new Error(String(err));
-      if (error.name === "AbortError") {
-        console.log("[SSE Hook] SSE stream connection aborted by client.");
-        return;
-      }
-      console.error("SSE stream connection error:", err);
-      setMessages((prev) => {
-        const updated = [...prev];
-        const targetIdx = updated.findIndex((m) => m.id === assistantMsgId);
-        if (targetIdx !== -1) {
-          updated[targetIdx] = {
-            ...updated[targetIdx],
-            content: updated[targetIdx].content + `\n\n[Connection Error: ${error.message}]`,
-          };
-        }
-        return updated;
-      });
-      setIsStreaming(false);
-      setActiveAgent("idle");
+    controllerRef.current = controller;
+    if (!sessionRef.current) {
+      sessionRef.current = crypto.randomUUID();
+      setSessionId(sessionRef.current);
     }
-  }, [isStreaming]);
+    const id = sessionRef.current;
+    const assistantId = crypto.randomUUID();
+    const timestamp = Date.now();
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: text,
+        thoughts: [],
+        timestamp,
+      },
+      {
+        id: assistantId,
+        role: "assistant",
+        content: "",
+        thoughts: [],
+        timestamp,
+      },
+    ]);
+    setIsStreaming(true);
+    setStopError("");
+    setActiveAgent("supervisor");
+    const turn: PendingTurn = {
+      sessionId: id,
+      requestId: assistantId,
+      response: sendChatMessage(text, id, controller.signal, assistantId),
+      stopping: false,
+      finished: false,
+    };
+    turnRef.current = turn;
+    const current = () => controllerRef.current === controller;
+    const timeout = setTimeout(
+      () =>
+        controller.abort(
+          new Error("The response timed out. Please try again."),
+        ),
+      150_000,
+    );
+    try {
+      const response = await turn.response;
+      for await (const { event, data } of readSSE(
+        response,
+        controller.signal,
+      )) {
+        if (!current()) break;
+        let thought: ThoughtNode | undefined;
+        if (
+          event === "agent_state" &&
+          typeof data.active_agent === "string" &&
+          agents.includes(data.active_agent)
+        ) {
+          setActiveAgent(data.active_agent as ActiveAgent);
+          thought = {
+            id: crypto.randomUUID(),
+            type: "agent_state",
+            name: data.active_agent,
+            timestamp: Date.now(),
+          };
+        } else if (
+          (event === "tool_call" || event === "tool_result") &&
+          typeof data.tool === "string"
+        ) {
+          thought = {
+            id: crypto.randomUUID(),
+            type: event,
+            name: data.tool,
+            input: data.input,
+            output: typeof data.output === "string" ? data.output : undefined,
+            timestamp: Date.now(),
+          };
+        } else if (event === "error") {
+          throw new Error(
+            typeof data.detail === "string"
+              ? data.detail
+              : "The response failed.",
+          );
+        }
+        if (event === "token" && typeof data.token !== "string")
+          throw new Error("Invalid text received from server.");
+        if (thought || event === "token") {
+          const nextThought = thought;
+          const token = event === "token" ? (data.token as string) : "";
+          setMessages((prev) =>
+            prev.map((message) =>
+              message.id === assistantId
+                ? {
+                    ...message,
+                    content: message.content + token,
+                    thoughts: nextThought
+                      ? [...message.thoughts, nextThought]
+                      : message.thoughts,
+                  }
+                : message,
+            ),
+          );
+        }
+      }
+    } catch (error: unknown) {
+      if (current()) {
+        const reason = controller.signal.aborted
+          ? controller.signal.reason
+          : error;
+        const detail =
+          reason instanceof Error
+            ? reason.message
+            : "Connection failed. Please try again.";
+        setMessages((prev) =>
+          prev.map((message) =>
+            message.id === assistantId
+              ? {
+                  ...message,
+                  content: `${message.content}\n\n[Error: ${detail}]`,
+                }
+              : message,
+          ),
+        );
+      }
+    } finally {
+      clearTimeout(timeout);
+      turn.finished = true;
+      if (current() && !turn.stopping) {
+        controllerRef.current = null;
+        turnRef.current = null;
+        setIsStreaming(false);
+        setActiveAgent("idle");
+      }
+    }
+  }, []);
 
   return {
     messages,
     activeAgent,
     isStreaming,
+    isStopping,
+    stopError,
     sessionId,
     sendMessage,
     clearChat,
+    loadSession,
+    stopStream,
   };
 }

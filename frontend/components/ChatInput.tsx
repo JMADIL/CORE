@@ -1,84 +1,106 @@
-import React, { useState, useRef, useEffect } from "react";
-import { ArrowUp } from "lucide-react";
+"use client";
+
+import { ArrowUp, Square, LoaderCircle } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/textarea";
+import type { RefObject } from "react";
 
 interface ChatInputProps {
   onSend: (text: string) => void;
   disabled: boolean;
+  isStreaming: boolean;
+  isStopping?: boolean;
+  stopError?: string;
+  onStop: () => void;
+  value: string;
+  onChange: (text: string) => void;
+  inputRef: RefObject<HTMLTextAreaElement | null>;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
-  const [text, setText] = useState("");
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!text.trim() || disabled) return;
-    onSend(text);
-    setText("");
-  };
-
-  // Auto-resize textarea height
-  useEffect(() => {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    textarea.style.height = "auto";
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 180)}px`;
-  }, [text]);
-
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit(e);
+export function ChatInput({
+  onSend,
+  disabled,
+  isStreaming,
+  isStopping = false,
+  stopError = "",
+  onStop,
+  value,
+  onChange,
+  inputRef,
+}: ChatInputProps) {
+  const submit = () => {
+    if (value.trim() && !disabled) {
+      onSend(value);
+      onChange("");
     }
   };
-
   return (
-    <div className="fixed bottom-0 left-0 right-0 p-6 bg-gradient-to-t from-black via-black/95 to-transparent z-40">
-      {/* Blurred fade line above control deck */}
-      <div
-        className="pointer-events-none absolute bottom-0 inset-x-0 h-44 z-[1] transition-[height] duration-500 ease-[cubic-bezier(0.16,1,0.3,1)]"
-        style={{
-          backdropFilter: "blur(8px)",
-          WebkitBackdropFilter: "blur(8px)",
-          background: "transparent",
-          maskImage: "linear-gradient(to top, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 0.9) 30%, rgb(0 0 0 / 0.8) 68%, transparent 100%)",
-          WebkitMaskImage: "linear-gradient(to top, rgb(0 0 0 / 1) 0%, rgb(0 0 0 / 0.9) 30%, rgb(0 0 0 / 0.8) 68%, transparent 100%)",
-        }}
-      />
-
+    <div className="w-full">
       <form
-        onSubmit={handleSubmit}
-        className="max-w-3xl mx-auto relative z-10 flex items-center bg-[#e3e0da]/5 border border-[#e3e0da]/20 rounded-full focus-within:border-[#e3e0da]/50 backdrop-blur-md transition-all duration-200"
+        onSubmit={(event) => {
+          event.preventDefault();
+          submit();
+        }}
+        className="chat-composer flex items-end gap-3 rounded-[22px] p-2.5"
       >
-        <textarea
-          ref={textareaRef}
-          value={text}
-          onChange={(e) => setText(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder={disabled ? "Orchestrating agents..." : "Ask Core..."}
+        <Textarea
+          ref={inputRef}
+          aria-label="Message Core"
+          placeholder="Message Core…"
+          maxLength={12000}
           disabled={disabled}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (
+              event.key === "Enter" &&
+              !event.shiftKey &&
+              !event.nativeEvent.isComposing
+            ) {
+              event.preventDefault();
+              submit();
+            }
+          }}
           rows={1}
-          className="w-full pl-6 pr-14 py-4 bg-transparent border-0 focus:ring-0 outline-none text-sm text-[#e3e0da] placeholder-[#e3e0da]/40 resize-none max-h-[180px] font-sans"
+          className="max-h-40 min-h-11 min-w-0 flex-1 resize-none rounded-none border-0 bg-transparent! px-3 py-2.5 text-base leading-6 shadow-none placeholder:text-muted-foreground/80 focus-visible:ring-0 disabled:bg-transparent disabled:opacity-60 md:text-[15px]"
         />
-
-        {/* Submit button & shortcut indicator */}
-        <div className="absolute right-3.5 top-1/2 -translate-y-1/2 flex items-center">
-          <button
-            type="submit"
-            disabled={!text.trim() || disabled}
-            className={`p-2 rounded-full transition-all duration-150 flex items-center justify-center cursor-pointer active:scale-95 ${text.trim() && !disabled
-              ? "bg-[#e3e0da] text-black hover:bg-[#e3e0da]/90"
-              : "bg-[#e3e0da]/5 border border-[#e3e0da]/10 text-[#e3e0da]/30"
-              }`}
+        {isStreaming || isStopping ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="secondary"
+            onClick={onStop}
+            aria-label={isStopping ? "Stopping response" : "Stop response"}
+            disabled={isStopping}
+            className="mb-1 size-9 shrink-0 rounded-full transition-[background-color,color,box-shadow,transform] duration-200 ease-out active:scale-95"
           >
-            <ArrowUp className="w-3.5 h-3.5" />
-          </button>
-        </div>
+            {isStopping ? (
+              <LoaderCircle className="size-4 animate-spin" />
+            ) : (
+              <Square className="size-3.5 fill-current" />
+            )}
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            size="icon"
+            disabled={disabled || !value.trim()}
+            aria-label="Send message"
+            className="mb-1 size-9 shrink-0 rounded-full bg-primary text-primary-foreground transition-[background-color,color,box-shadow,transform] duration-200 ease-out hover:bg-primary/90 hover:shadow-sm active:scale-95 disabled:bg-muted disabled:text-muted-foreground/60 disabled:opacity-100"
+          >
+            <ArrowUp className="size-4" />
+          </Button>
+        )}
       </form>
-      <div className="max-w-3xl mx-auto text-center mt-3 relative z-10 select-none">
-        <span className="text-[8px] font-mono tracking-[0.2em] text-[#e3e0da]/40 uppercase">
-          LangGraph Multi-Agent Core • MCP Servers
+      {stopError && (
+        <p role="status" className="mt-2 px-2 text-xs text-destructive">
+          {stopError}
+        </p>
+      )}
+      <div className="mt-2.5 hidden items-center justify-end px-2 text-[11px] text-muted-foreground/80 sm:flex">
+        <span>
+          Enter to send<span className="mx-2">·</span>Shift + Enter for a new
+          line
         </span>
       </div>
     </div>

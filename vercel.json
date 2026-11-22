@@ -1,0 +1,23 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "services": {
+    "frontend": {
+      "root": "frontend/",
+      "framework": "nextjs"
+    },
+    "backend": {
+      "root": "backend/",
+      "runtime": "container",
+      "entrypoint": "Dockerfile",
+      "command": [
+        "/bin/sh",
+        "-c",
+        "exec /app/.venv/bin/uvicorn core.main:app --host 0.0.0.0 --port ${PORT:-80}"
+      ]
+    }
+  },
+  "rewrites": [
+    { "source": "/backend/(.*)", "destination": { "service": "backend" } },
+    { "source": "/(.*)", "destination": { "service": "frontend" } }
+  ]
+}

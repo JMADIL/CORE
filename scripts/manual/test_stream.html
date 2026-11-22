@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="utf-8"><title>Core SSE diagnostic</title></head>
+<body>
+  <h1>Core SSE diagnostic</h1>
+  <p>Requires the backend on port 8000. Run sends one real model request.</p>
+  <button id="run" type="button">Run</button>
+  <pre id="output" aria-live="polite"></pre>
+  <script>
+    document.getElementById('run').addEventListener('click', async () => {
+      const button = document.getElementById('run');
+      const output = document.getElementById('output');
+      button.disabled = true;
+      output.textContent = 'Starting request…\n';
+      const token = Array.from(crypto.getRandomValues(new Uint8Array(32)), byte => byte.toString(16).padStart(2, '0')).join('');
+      try {
+        const response = await fetch('http://localhost:8000/api/chat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Client-Token': token },
+          body: JSON.stringify({ message: 'Say hello briefly.', session_id: crypto.randomUUID() }),
+          signal: AbortSignal.timeout(150000)
+        });
+        if (!response.ok) throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) { output.textContent += decoder.decode(); break; }
+            output.textContent += decoder.decode(value, { stream: true });
+          }
+        } finally { reader.releaseLock(); }
+      } catch (error) { output.textContent += `\nError: ${error.message}`; }
+      finally { button.disabled = false; }
+    });
+  </script>
+</body>
+</html>

@@ -1,0 +1,200 @@
+"""Deterministic API regressions; no external models or MCP servers required."""
+import asyncio
+import importlib
+import tempfile
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+from langchain_core.messages import AIMessage, AIMessageChunk
+
+from core.storage.sessions import SessionStore
+from core.config import settings
+from core.api.dependencies import session_owner
+from core.api.routes import chat_endpoint
+from core.api.schemas import ChatRequest
+
+api = importlib.import_module("core.main")
+TOKEN = "a" * 64
+HEADERS = {"X-Client-Token": TOKEN}
+
+
+class FakeGraph:
+    def __init__(self):
+        self.states = []
+        self.fail = False
+
+    async def astream_events(self, state, **kwargs):
+        self.states.append(state)
+        yield {"event": "on_chain_start", "name": "responder"}
+        if self.fail:
+            raise RuntimeError("private provider credential details")
+        yield {"event": "on_chat_model_stream", "metadata": {"langgraph_node": "responder"},
+               "data": {"chunk": AIMessageChunk(content=[{"type": "text", "text": "Hello"}])}}
+        yield {"event": "on_chain_end", "name": "LangGraph", "parent_ids": [],
+               "data": {"output": {"messages": state["messages"] + [AIMessage(content="Hello")]}}}
+
+
+class APITests(unittest.TestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.graph = FakeGraph()
+        self.patches = [patch.object(settings, "DATABASE_PATH", str(Path(self.temp.name) / "sessions.db")),
+                        patch.object(settings, "DATABASE_URL", ""),
+                        patch.object(settings, "CHAT_API_KEY", ""), patch.object(settings, "REQUESTS_PER_MINUTE", 30),
+                        patch.object(api, "build_graph", return_value=self.graph)]
+        for item in self.patches:
+            item.start()
+        self.client = TestClient(api.app)
+        self.client.__enter__()
+
+    def tearDown(self):
+        self.client.__exit__(None, None, None)
+        for item in reversed(self.patches):
+            item.stop()
+        self.temp.cleanup()
+
+    def chat(self, message="hello", session="test", headers=None):
+        return self.client.post("/api/chat", json={"message": message, "session_id": session}, headers=headers or HEADERS)
+
+    def test_health_and_stream(self):
+        self.assertEqual(self.client.get("/health").status_code, 200)
+        response = self.chat()
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('event: token\ndata: {"token": "Hello"}', response.text)
+        self.assertIn("event: done", response.text)
+
+    def test_vercel_service_paths_share_api_and_ownership(self):
+        self.assertEqual(self.client.get("/backend/health").status_code, 200)
+        response = self.client.post("/backend/api/chat", json={"message": "hello", "session_id": "service-path"}, headers=HEADERS)
+        self.assertIn("event: token", response.text)
+        self.assertIn("event: done", response.text)
+        self.assertEqual(self.client.delete("/backend/api/sessions/service-path", headers={"X-Client-Token": "b" * 64}).status_code, 403)
+        self.assertEqual(self.client.delete("/backend/api/sessions/service-path", headers=HEADERS).status_code, 204)
+
+    def test_explicit_cancel_checks_owner_and_request_id(self):
+        request_id = "c13665ec-2042-4218-8f45-5bca565ebd43"
+        owner = session_owner(TOKEN, "")
+        old, _ = api.app.state.sessions.claim("stop", owner, "local", request_id)
+        response = self.client.post("/backend/api/sessions/stop/cancel", headers={"X-Client-Token": "b" * 64}, json={"request_id": request_id})
+        self.assertEqual(response.status_code, 403)
+        self.assertTrue(api.app.state.sessions.is_active("stop", old))
+        response = self.client.post("/backend/api/sessions/stop/cancel", headers=HEADERS, json={"request_id": "bad"})
+        self.assertEqual(response.status_code, 422)
+        response = self.client.post("/backend/api/sessions/stop/cancel", headers=HEADERS, json={"request_id": request_id})
+        self.assertEqual(response.status_code, 204)
+        self.assertFalse(api.app.state.sessions.is_active("stop", old))
+        self.assertEqual(self.chat("continue", session="stop").status_code, 200)
+
+    def test_history_survives_store_recreation(self):
+        self.chat("first")
+        api.app.state.sessions = SessionStore(settings.DATABASE_PATH)
+        self.chat("second")
+        self.assertEqual([m.content for m in self.graph.states[-1]["messages"]], ["first", "Hello", "second"])
+
+    def test_ownership(self):
+        self.chat()
+        other = {"X-Client-Token": "b" * 64}
+        self.assertEqual(self.chat(headers=other).status_code, 403)
+        self.assertEqual(self.client.delete("/api/sessions/test", headers=other).status_code, 403)
+        self.assertEqual(self.client.delete("/api/sessions/test", headers=HEADERS).status_code, 204)
+
+    def test_optional_api_key(self):
+        with patch.object(settings, "CHAT_API_KEY", "secret"):
+            self.assertEqual(self.chat().status_code, 401)
+            self.assertEqual(self.chat(headers={**HEADERS, "X-API-Key": "secret"}).status_code, 200)
+
+    def test_validation(self):
+        for message in ["", "   ", "x" * 12001]:
+            self.assertEqual(self.chat(message).status_code, 422)
+        self.assertEqual(self.chat(session="../bad").status_code, 422)
+        self.assertEqual(self.client.post("/api/chat", json={"message": "hello"}).status_code, 422)
+
+    def test_body_limit_including_chunked_upload(self):
+        with patch.object(settings, "MAX_REQUEST_BYTES", 100):
+            response = self.client.post("/api/chat", content=iter([b"x" * 60, b"y" * 60]), headers=HEADERS)
+        self.assertEqual(response.status_code, 413)
+
+    def test_real_graph_streams_and_saves_final_history(self):
+        from langchain_core.language_models.fake_chat_models import FakeListChatModel
+        from core.graph.builder import build_graph
+        model = FakeListChatModel(responses=["Hello from graph"])
+        with patch("core.graph.nodes.responder.create_llm", return_value=model), patch.object(api.app.state, "graph", build_graph()):
+            response = self.chat()
+        self.assertIn("event: token", response.text)
+        self.assertIn("event: done", response.text)
+        self.chat("next")
+        self.assertEqual(self.graph.states[-1]["messages"][1].content, "Hello from graph")
+
+    def test_cancelled_stream_releases_session_and_rolls_back(self):
+        from starlette.requests import Request
+        async def cancel():
+            request = Request({"type": "http", "app": api.app, "client": ("local", 1234)})
+            response = await chat_endpoint(ChatRequest(message="cancel me", session_id="cancel"), request, session_owner(TOKEN, ""))
+            await anext(response.body_iterator)
+            await response.body_iterator.aclose()
+            store = api.app.state.sessions
+            lease, history = await asyncio.to_thread(store.claim, "cancel", session_owner(TOKEN, ""), "local")
+            self.assertEqual(history, [])
+            await asyncio.to_thread(store.finish, "cancel", lease)
+        asyncio.run(cancel())
+
+    def test_failure_rolls_back_and_sanitizes_error(self):
+        self.chat("first")
+        self.graph.fail = True
+        with self.assertLogs("api", level="ERROR"):
+            response = self.chat("failed")
+        self.assertIn("event: error", response.text)
+        self.assertNotIn("private provider", response.text)
+        self.graph.fail = False
+        self.chat("retry")
+        self.assertEqual([m.content for m in self.graph.states[-1]["messages"]], ["first", "Hello", "retry"])
+
+    def test_rate_limit(self):
+        with patch.object(settings, "REQUESTS_PER_MINUTE", 1):
+            self.assertEqual(self.chat().status_code, 200)
+            response = self.chat()
+            self.assertEqual(response.status_code, 429)
+            self.assertEqual(response.headers["retry-after"], "60")
+
+    def test_capacity(self):
+        with patch.object(settings, "MAX_SESSIONS", 1):
+            self.chat()
+            self.assertEqual(self.chat(session="second").status_code, 503)
+
+    def test_busy_session_is_rejected(self):
+        self.chat()
+        store = api.app.state.sessions
+        lease, _ = store.claim("test", session_owner(TOKEN, ""), "local")
+        try:
+            self.assertEqual(self.chat().status_code, 409)
+            self.assertEqual(self.client.delete("/api/sessions/test", headers=HEADERS).status_code, 409)
+        finally:
+            store.finish("test", lease)
+        self.assertEqual(self.chat().status_code, 200)
+
+    def test_request_timeout(self):
+        class SlowGraph:
+            async def astream_events(self, *args, **kwargs):
+                await asyncio.sleep(10)
+                yield {}
+        with patch.object(api.app.state, "graph", SlowGraph()), patch.object(settings, "CHAT_TIMEOUT_SECONDS", 0.01):
+            response = self.chat()
+        self.assertIn("timed out", response.text)
+        self.assertEqual(self.chat().status_code, 200)
+
+    def test_history_limit_keeps_whole_turns(self):
+        with patch.object(settings, "MAX_HISTORY_TURNS", 2):
+            self.chat("one")
+            self.chat("two")
+            self.chat("three")
+            self.assertEqual([m.content for m in self.graph.states[-1]["messages"]], ["two", "Hello", "three"])
+
+    def test_cors_rejects_unlisted_origin(self):
+        response = self.client.options("/api/chat", headers={"Origin": "https://untrusted.example", "Access-Control-Request-Method": "POST"})
+        self.assertEqual(response.status_code, 400)
+
+
+if __name__ == "__main__":
+    unittest.main()

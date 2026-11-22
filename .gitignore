@@ -135,7 +135,6 @@ Thumbs.db
 *.swo
 
 # Project-specific ignores
-uv.lock
 .python-version
 
 # Node/Next.js ignores (for frontend phase)
@@ -143,3 +142,6 @@ node_modules/
 .next/
 out/
 .vercel
+.data/
+*.tsbuildinfo
+.env*

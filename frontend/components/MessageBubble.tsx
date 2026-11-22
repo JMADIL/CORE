@@ -1,60 +1,120 @@
 "use client";
 
-import React from "react";
+import { memo, useEffect, useRef, useState } from "react";
+import { Check, Copy } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { Message } from "../hooks/useSSEStream";
-import { ThoughtProcess } from "./ThoughtProcess";
+import { ThoughtProcess } from "@/components/ThoughtProcess";
+import { Button } from "@/components/ui/button";
+import type { Message } from "@/types/chat";
+import { responseWords } from "@/lib/responseWords";
 
-interface MessageBubbleProps {
+const responsePlugins = [responseWords];
+
+export const MessageBubble = memo(function MessageBubble({
+  message,
+  isStreamingActive,
+}: {
   message: Message;
   isStreamingActive: boolean;
-}
-
-export function MessageBubble({ message, isStreamingActive }: MessageBubbleProps) {
-  const isUser = message.role === "user";
-  console.log("[MessageBubble] Rendering message:", message.id, "content:", JSON.stringify(message.content), "role:", message.role);
-
-  return (
-    <div className={`w-full max-w-3xl mx-auto px-4 md:px-6 py-4 flex flex-col ${isUser ? "items-end" : "items-start"}`}>
-      {/* Role label */}
-      <span className="text-[11px] font-sans font-semibold tracking-[0.1em] text-[#e3e0da]/40 mb-1.5 uppercase select-none">
-        {isUser ? "User" : "Core"}
-      </span>
-
-      <div
-        className={`max-w-[85%] rounded-2xl px-5 py-3.5 text-[15.5px] leading-relaxed font-display ${
-          isUser
-            ? "bg-[#e3e0da] text-[#121212] font-normal rounded-tr-sm"
-            : "bg-[#e3e0da]/5 text-[#e3e0da]/95 rounded-tl-sm border border-[#e3e0da]/15"
-        }`}
+}) {
+  const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(() => () => clearTimeout(timer.current), []);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      setCopyError(false);
+      clearTimeout(timer.current);
+      timer.current = setTimeout(() => setCopied(false), 2000);
+    } catch {
+      setCopyError(true);
+    }
+  };
+  if (message.role === "user")
+    return (
+      <article
+        aria-label="Your message"
+        className="ml-auto max-w-[90%] rounded-lg border border-brand/10 bg-brand-soft px-5 py-3.5 text-[15px] leading-[1.75] [overflow-wrap:anywhere] sm:max-w-[82%]"
       >
-        {/* Thoughts section (for assistant messages only) */}
-        {!isUser && message.thoughts && message.thoughts.length > 0 && (
-          <div className="mb-3.5">
-            <ThoughtProcess thoughts={message.thoughts} />
-          </div>
+        <p className="whitespace-pre-wrap">{message.content}</p>
+      </article>
+    );
+  return (
+    <article aria-label="Core response" className="min-w-0">
+      <div className="mb-4 flex items-center gap-2">
+        <span
+          className="core-wordmark"
+          data-active={isStreamingActive || undefined}
+        >
+          Core
+        </span>
+        {isStreamingActive && (
+          <span className="text-[10px] text-muted-foreground">Working…</span>
         )}
-
-        {/* Message body */}
-        <div className="min-w-0">
-          {message.content === "" && !isUser && isStreamingActive ? (
-            <div className="flex items-center gap-1.5 py-1 px-0.5 select-none" title="orchestrating agents...">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#e3e0da]/60 animate-bounce [animation-delay:-0.3s]"></span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#e3e0da]/60 animate-bounce [animation-delay:-0.15s]"></span>
-              <span className="w-1.5 h-1.5 rounded-full bg-[#e3e0da]/60 animate-bounce"></span>
-            </div>
-          ) : isUser ? (
-            <span className="whitespace-pre-wrap">{message.content}</span>
-          ) : (
-            <div className={`prose-editorial ${isStreamingActive ? "streaming-cursor" : ""}`}>
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                {message.content}
-              </ReactMarkdown>
-            </div>
+      </div>
+      {message.content ? (
+        <div
+          className="chat-prose response-text"
+          data-streaming={isStreamingActive || undefined}
+        >
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            rehypePlugins={responsePlugins}
+            components={{
+              table: ({ children }) => (
+                <div className="my-4 max-w-full overflow-x-auto">
+                  <table>{children}</table>
+                </div>
+              ),
+              a: ({ href, children }) => (
+                <a href={href} target="_blank" rel="noopener noreferrer">
+                  {children}
+                </a>
+              ),
+            }}
+          >
+            {message.content}
+          </ReactMarkdown>
+        </div>
+      ) : isStreamingActive ? (
+        <div role="status" className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
+          <span className="response-typing" aria-hidden="true">
+            <span />
+            <span />
+            <span />
+          </span>
+          <span>Preparing a response…</span>
+        </div>
+      ) : (
+        <p className="text-sm text-muted-foreground">Response stopped.</p>
+      )}
+      <ThoughtProcess thoughts={message.thoughts} />
+      {!!message.content && !isStreamingActive && (
+        <div className="mt-3 flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            className="text-muted-foreground"
+            onClick={copy}
+            aria-label={copied ? "Response copied" : "Copy response"}
+            title={copied ? "Copied" : "Copy response"}
+          >
+            {copied ? (
+              <Check className="size-3 text-emerald-600" />
+            ) : (
+              <Copy className="size-3" />
+            )}
+          </Button>
+          {(copied || copyError) && (
+            <span role="status" className="text-[10px] text-muted-foreground">
+              {copied ? "Copied" : "Could not access clipboard"}
+            </span>
           )}
         </div>
-      </div>
-    </div>
+      )}
+    </article>
   );
-}
+});

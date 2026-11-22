@@ -1,30 +1,10 @@
-import React, { useRef, useEffect, ReactNode } from "react";
+import type { ReactNode } from "react";
 
-interface ChatWindowProps {
-  children: ReactNode;
-  /** Whether there are any messages to display */
-  hasMessages: boolean;
-}
-
-/**
- * ChatWindow — Centered, scrollable message area container.
- * Matches the editorial minimalist layout of tingyan.me.
- */
-export function ChatWindow({ children, hasMessages }: ChatWindowProps) {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  // Auto-scroll to bottom when children change
-  useEffect(() => {
-    if (scrollRef.current && hasMessages) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-    }
-  }, [children, hasMessages]);
-
+export function ChatWindow({ children }: { children: ReactNode }) {
   return (
     <div
-      ref={scrollRef}
-      className="flex-grow flex flex-col w-full overflow-y-auto"
       id="chat-window"
+      className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-5 py-8 sm:px-8 sm:py-10"
     >
       {children}
     </div>

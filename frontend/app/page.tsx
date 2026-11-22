@@ -1,135 +1,229 @@
 "use client";
 
-import React, { useEffect, useRef } from "react";
-import { useSSEStream } from "../hooks/useSSEStream";
-import { Navigation } from "../components/Navigation";
-import { ChatWindow } from "../components/ChatWindow";
-import { MessageBubble } from "../components/MessageBubble";
-import { ChatInput } from "../components/ChatInput";
-import { ArrowUpRight } from "lucide-react";
+import { useState, useEffect, useRef, useMemo } from "react";
+import { useSSEStream } from "@/hooks/useSSEStream";
+import { useBackendHealth } from "@/hooks/useBackendHealth";
+import { AppSidebar } from "@/components/Sidebar";
+import { Navigation } from "@/components/Navigation";
+import { WelcomeScreen } from "@/components/WelcomeScreen";
+import { ChatWindow } from "@/components/ChatWindow";
+import { MessageBubble } from "@/components/MessageBubble";
+import { ChatInput } from "@/components/ChatInput";
+import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
+import { parseSessions, mergeSession } from "@/lib/history";
+import { deleteChatSession } from "@/lib/api";
+import type { ChatSession } from "@/types/chat";
+
+const SESSIONS_STORAGE_KEY = "core_chat_sessions_v1";
 
 export default function Home() {
   const {
     messages,
     activeAgent,
     isStreaming,
+    isStopping,
+    stopError,
     sessionId,
     sendMessage,
     clearChat,
+    loadSession,
+    stopStream,
   } = useSSEStream();
 
+  const [savedSessions, setSavedSessions] = useState<ChatSession[]>([]);
+  const [draft, setDraft] = useState("");
+  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const health = useBackendHealth();
+  const [isStorageInitialized, setIsStorageInitialized] = useState(false);
+  const [storageError, setStorageError] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  // Auto scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const currentSessionRef = useRef(sessionId);
+  const followScrollRef = useRef(true);
+  const [deletingId, setDeletingId] = useState("");
+  useEffect(() => {
+    currentSessionRef.current = sessionId;
+  }, [sessionId]);
+  const sessions = useMemo(
+    () => mergeSession(savedSessions, sessionId, messages),
+    [savedSessions, sessionId, messages],
+  );
 
   useEffect(() => {
-    scrollToBottom();
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      try {
+        const stored = parseSessions(
+          localStorage.getItem(SESSIONS_STORAGE_KEY),
+        );
+        // Restore sidebar history; a visit always starts with an empty chat.
+        setSavedSessions(stored);
+      } catch {
+        setStorageError(
+          "Browser storage is unavailable. Threads will only be kept in this tab.",
+        );
+      }
+      setIsStorageInitialized(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isStorageInitialized) return;
+    const save = () => {
+      try {
+        localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+      } catch {
+        setStorageError(
+          "Thread history could not be saved. Browser storage may be full or disabled.",
+        );
+      }
+    };
+    // Save after streaming settles, and flush on reload/navigation.
+    const timer = setTimeout(save, 500);
+    window.addEventListener("pagehide", save);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener("pagehide", save);
+    };
+  }, [sessions, isStorageInitialized]);
+
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      if (followScrollRef.current)
+        messagesEndRef.current?.scrollIntoView({ behavior: "auto" });
+    });
+    return () => cancelAnimationFrame(frame);
   }, [messages, activeAgent]);
 
-  // Suggested questions
-  const suggestions = [
-    "What is the current time in Tokyo?",
-    "Search arXiv for recent papers on LLM agents.",
-    "Can you explain the sequential thinking process?",
-    "Check the weather forecast for Chicago.",
-  ];
+  const handleSelectSession = (session: ChatSession) => {
+    if (session.id === sessionId) return;
+    followScrollRef.current = true;
+    setSavedSessions(sessions);
+    loadSession(session.id, session.messages);
+  };
+
+  const handleNewChat = () => {
+    followScrollRef.current = true;
+    setSavedSessions(sessions);
+    clearChat();
+    setDraft("");
+    inputRef.current?.focus();
+  };
+
+  const handleDeleteSession = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (deletingId) return;
+    if (isStreaming && id === sessionId) {
+      setStorageError(
+        "Wait for the response to finish before deleting this thread.",
+      );
+      return;
+    }
+    setDeletingId(id);
+    try {
+      await deleteChatSession(id);
+      setSavedSessions((previous) =>
+        previous.filter((session) => session.id !== id),
+      );
+      if (currentSessionRef.current === id) clearChat();
+      setStorageError("");
+    } catch (error) {
+      setStorageError(
+        error instanceof Error
+          ? error.message
+          : "Unable to delete this thread.",
+      );
+    } finally {
+      setDeletingId("");
+    }
+  };
+
+  const suggest = (prompt: string) => {
+    setDraft(prompt);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  };
+  const busy =
+    isStreaming || isStopping || !isStorageInitialized || !!deletingId;
+  const title =
+    sessions.find((session) => session.id === sessionId)?.title ||
+    "New conversation";
 
   return (
-    <div className="flex flex-col min-h-screen bg-black font-sans antialiased text-[#ECECED] relative select-none">
-      {/* Navigation */}
-      <Navigation sessionId={sessionId} onReset={clearChat} />
-
-      {/* Main Container */}
-      <main className="flex-grow flex flex-col pt-16 pb-40">
-
-
-        {/* Message Thread or Zero State */}
-        <ChatWindow hasMessages={messages.length > 0}>
+    <SidebarProvider
+      defaultOpen
+      className="h-dvh min-h-0 overflow-hidden"
+      style={{ "--sidebar-width": "15rem" } as React.CSSProperties}
+    >
+      <AppSidebar
+        onNewChat={handleNewChat}
+        currentSessionId={sessionId}
+        sessions={sessions}
+        onSelectSession={handleSelectSession}
+        onDeleteSession={handleDeleteSession}
+        onSuggestion={suggest}
+        deletingId={deletingId}
+      />
+      <SidebarInset className="min-w-0 overflow-hidden">
+        <Navigation
+          title={title}
+          activeAgent={activeAgent}
+          model={health.model}
+          status={health.status}
+        />
+        {storageError && (
+          <div
+            role="status"
+            className="mx-5 mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-4 py-2 text-xs text-amber-700 dark:text-amber-300"
+          >
+            {storageError}
+          </div>
+        )}
+        <div
+          className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+          aria-label="Conversation"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            followScrollRef.current =
+              element.scrollHeight - element.scrollTop - element.clientHeight <
+              120;
+          }}
+        >
           {messages.length === 0 ? (
-            /* Welcome / Zero State Screen — Editorial Minimalist Layout (tingyan.me) */
-            <div className="flex-grow flex items-center justify-center max-w-2xl mx-auto px-6 py-12 md:py-24">
-              <div className="space-y-6 text-left">
-                {/* Paragraph 1 — introduction */}
-                <p className="font-display text-[15px] md:text-[17px] font-light leading-relaxed text-[#e3e0da]/80">
-                  A multi-agent orchestrator built end-to-end with LangGraph, FastAPI, and MCP servers — working from concept to production
-                </p>
-
-                {/* Paragraph 2 — capabilities */}
-                <p className="font-display text-[15px] md:text-[17px] font-light leading-relaxed text-[#e3e0da]/80">
-                  In the active session, I coordinate routing decisions at the{" "}
-                  <span className="font-display font-medium text-[#e3e0da] border-b border-transparent hover:border-accent-yellow transition-colors duration-150 cursor-default">
-                    Supervisor Node
-                  </span>
-                  , execute actions through the{" "}
-                  <span className="font-display font-medium text-[#e3e0da] border-b border-transparent hover:border-accent-yellow transition-colors duration-150 cursor-default">
-                    Tool Agent
-                  </span>
-                  {" "}with live MCP connections to{" "}
-                  <span className="font-display font-medium text-[#e3e0da] border-b border-transparent hover:border-accent-yellow transition-colors duration-150 cursor-default">
-                    Weather
-                  </span>
-                  ,{" "}
-                  <span className="font-display font-medium text-[#e3e0da] border-b border-transparent hover:border-accent-yellow transition-colors duration-150 cursor-default">
-                    Time
-                  </span>
-                  ,{" "}
-                  <span className="font-display font-medium text-[#e3e0da] border-b border-transparent hover:border-accent-yellow transition-colors duration-150 cursor-default">
-                    Research
-                  </span>
-                  , and{" "}
-                  <span className="font-display font-medium text-[#e3e0da] border-b border-transparent hover:border-accent-yellow transition-colors duration-150 cursor-default">
-                    Sequential Thinking
-                  </span>
-                  {" "}servers
-                </p>
-
-                {/* Paragraph 3 — invitation */}
-                <p className="font-display text-[15px] md:text-[17px] font-light leading-relaxed text-[#e3e0da]/80">
-                  Start by selecting a thread below, or type your request directly in the prompt bar
-                </p>
-
-                {/* Suggestions Block */}
-                <div className="pt-8 space-y-4">
-                  <span className="text-[12px] font-sans font-semibold tracking-[0.15em] text-[#e3e0da]/60 uppercase block">
-                    Suggested Threads
-                  </span>
-                  <div className="flex flex-wrap gap-2">
-                    {suggestions.map((q, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => sendMessage(q)}
-                        disabled={isStreaming}
-                        className="px-4 py-2 rounded-full border border-[#e3e0da]/20 hover:border-[#e3e0da]/50 bg-[#e3e0da]/5 hover:bg-[#e3e0da]/10 text-[13px] text-[#e3e0da]/80 hover:text-[#e3e0da] font-sans font-light tracking-normal transition-all duration-150 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed text-left active:scale-[0.98] flex items-center gap-2"
-                      >
-                        <span>{q}</span>
-                        <ArrowUpRight className="w-3.5 h-3.5 text-[#e3e0da]/50 flex-shrink-0" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-            </div>
+            <WelcomeScreen disabled={busy} onSuggestion={suggest} />
           ) : (
-            /* Active Message List */
-            <div className="flex flex-col w-full">
-              {messages.map((msg) => (
+            <ChatWindow>
+              {messages.map((message, index) => (
                 <MessageBubble
-                  key={msg.id}
-                  message={msg}
-                  isStreamingActive={isStreaming && msg.id === messages[messages.length - 1].id}
+                  key={message.id}
+                  message={message}
+                  isStreamingActive={
+                    isStreaming && index === messages.length - 1
+                  }
                 />
               ))}
               <div ref={messagesEndRef} />
-            </div>
+            </ChatWindow>
           )}
-        </ChatWindow>
-      </main>
-
-      {/* Floating Input */}
-      <ChatInput onSend={sendMessage} disabled={isStreaming} />
-    </div>
+        </div>
+        <div className="shrink-0 bg-background px-5 pb-5 pt-3 sm:px-8 sm:pb-6">
+          <div className="mx-auto max-w-[680px]">
+            <ChatInput
+              onSend={sendMessage}
+              disabled={busy}
+              isStreaming={isStreaming}
+              isStopping={isStopping}
+              stopError={stopError}
+              onStop={stopStream}
+              value={draft}
+              onChange={setDraft}
+              inputRef={inputRef}
+            />
+          </div>
+        </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }

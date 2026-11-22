@@ -1,0 +1,30 @@
+# Never upload local credentials, history, logs, or tool configuration.
+.env
+.env.*
+**/.env
+**/.env.*
+.data/
+.vercel/
+.git/
+.aws/
+.agents/
+.codex/
+.claude/
+.mcp.json
+.bash_profile
+.bashrc
+.gitconfig
+.profile
+.ripgreprc
+.idea/
+.vscode/
+
+# Dependencies, caches, and generated build output are installed remotely.
+**/.venv/
+**/node_modules/
+**/.next/
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/*.tsbuildinfo
+**/*.log

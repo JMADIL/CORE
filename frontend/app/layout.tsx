@@ -1,31 +1,30 @@
 import type { Metadata } from "next";
-import { Outfit, Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
+import { IBM_Plex_Sans, Geist_Mono, Source_Sans_3 } from "next/font/google";
 import "./globals.css";
+import { Providers } from "@/components/Providers";
 
-const outfit = Outfit({
-  variable: "--font-outfit",
+const plexSans = IBM_Plex_Sans({
+  variable: "--font-plex-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const inter = Inter({
-  variable: "--font-inter",
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-mono",
+const responseFont = Source_Sans_3({
+  variable: "--font-response",
   subsets: ["latin"],
-});
-
-const spaceGrotesk = Space_Grotesk({
-  variable: "--font-display",
-  subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Core Orchestrator — Multi-Agent Chat",
   description:
-    "A multi-agent chatbot powered by LangGraph orchestration, FastAPI SSE streaming, and live MCP tool servers. Built with an editorial-minimalist interface.",
+    "A multi-agent chatbot powered by LangGraph orchestration, FastAPI SSE streaming, and live MCP tool servers. A calm workspace for ideas, research, and everyday questions.",
   openGraph: {
     title: "Core Orchestrator",
     description:
@@ -47,17 +46,11 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${outfit.variable} ${inter.variable} ${jetbrainsMono.variable} ${spaceGrotesk.variable} h-full antialiased`}
+      suppressHydrationWarning
+      className={`${plexSans.variable} ${geistMono.variable} ${responseFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-black text-[#ECECED] font-sans antialiased selection:bg-[#C3982C]/30 selection:text-white flex flex-col">
-        {/* Ambient fog auras */}
-        <div className="fog-auras" aria-hidden="true" />
-        <div className="fog-depth" aria-hidden="true" />
-        {children}
-        {/* Film grain overlay */}
-        <div className="grain-container" aria-hidden="true">
-          <div className="grain-overlay" />
-        </div>
+      <body className="bg-background font-sans text-foreground antialiased">
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

@@ -1,0 +1,30 @@
+[project]
+name = "core"
+version = "0.1.0"
+description = "A multi-agent chatbot featuring LangGraph orchestration, FastAPI streaming, and MCP tools."
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115.0",
+    "uvicorn>=0.30.0",
+    "langgraph>=0.1.0",
+    "langchain-google-genai>=2.0.0",
+    "google-genai>=0.1.0",
+    "langchain-mcp-adapters>=0.3.0,<0.4",
+    "mcp[cli]>=1.30.0,<2",
+    "python-dotenv>=1.0.1",
+    "pydantic-settings>=2.2.0",
+    "langchain-openai>=1.3.3",
+    "mcp-server-time>=2026.7.10",
+    "psycopg[binary]>=3.2,<4",
+]
+
+[project.scripts]
+core-api = "core.main:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
