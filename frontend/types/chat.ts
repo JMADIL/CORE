@@ -12,6 +12,7 @@ export interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
+  error?: string;
   thoughts: ThoughtNode[];
   timestamp?: number;
 }

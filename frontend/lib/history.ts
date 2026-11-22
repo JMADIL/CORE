@@ -19,7 +19,8 @@ export function parseSessions(raw: string | null): ChatSession[] {
           (t.output === undefined || typeof t.output === "string")
         ).slice(-100) : [];
         return [{ id: m.id, role: m.role, content: m.content.slice(0, 100000), thoughts,
-          timestamp: typeof m.timestamp === "number" ? m.timestamp : undefined }];
+          timestamp: typeof m.timestamp === "number" ? m.timestamp : undefined,
+          error: typeof m.error === "string" ? m.error.slice(0, 2000) : undefined }];
       });
       return [{ id: entry.id, title: typeof entry.title === "string" ? entry.title.slice(0, 100) : "Untitled Thread",
         createdAt: typeof entry.createdAt === "number" ? entry.createdAt : 0,

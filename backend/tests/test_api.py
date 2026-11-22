@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 from unittest.mock import patch
+import httpx
+from openai import RateLimitError
 
 from fastapi.testclient import TestClient
 from langchain_core.messages import AIMessage, AIMessageChunk
@@ -24,10 +26,13 @@ class FakeGraph:
     def __init__(self):
         self.states = []
         self.fail = False
+        self.failure = None
 
     async def astream_events(self, state, **kwargs):
         self.states.append(state)
         yield {"event": "on_chain_start", "name": "responder"}
+        if self.failure:
+            raise self.failure
         if self.fail:
             raise RuntimeError("private provider credential details")
         yield {"event": "on_chat_model_stream", "metadata": {"langgraph_node": "responder"},
@@ -157,6 +162,37 @@ class APITests(unittest.TestCase):
             response = self.chat()
             self.assertEqual(response.status_code, 429)
             self.assertEqual(response.headers["retry-after"], "60")
+
+    def test_model_daily_limit_is_explained_and_session_can_continue(self):
+        self.chat("first")
+        self.graph.failure = RateLimitError(
+            "private provider response",
+            response=httpx.Response(429, request=httpx.Request("POST", "https://provider.example/chat")),
+            body={"error": {"message": "Rate limit exceeded: free-models-per-day",
+                            "metadata": {"limit_source": "openrouter_free_tier_daily"}}},
+        )
+        with self.assertLogs("api", level="ERROR"):
+            response = self.chat("limited")
+        self.assertIn('"code": "model_daily_limit"', response.text)
+        self.assertIn("daily usage limit", response.text)
+        self.assertNotIn("private provider", response.text)
+        self.assertNotIn("event: done", response.text)
+        self.graph.failure = None
+        self.assertIn("event: done", self.chat("retry").text)
+        self.assertEqual([m.content for m in self.graph.states[-1]["messages"]], ["first", "Hello", "retry"])
+
+    def test_model_temporary_limit_does_not_claim_daily_quota(self):
+        self.graph.failure = RateLimitError(
+            "private provider response",
+            response=httpx.Response(429, request=httpx.Request("POST", "https://provider.example/chat")),
+            body={"message": "Too many requests", "metadata": None},
+        )
+        with self.assertLogs("api", level="ERROR"):
+            response = self.chat()
+        self.assertIn('"code": "model_rate_limit"', response.text)
+        self.assertIn("request limit", response.text)
+        self.assertNotIn("daily", response.text)
+        self.assertNotIn("private provider", response.text)
 
     def test_capacity(self):
         with patch.object(settings, "MAX_SESSIONS", 1):

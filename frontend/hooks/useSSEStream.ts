@@ -221,7 +221,7 @@ export function useSSEStream() {
             message.id === assistantId
               ? {
                   ...message,
-                  content: `${message.content}\n\n[Error: ${detail}]`,
+                  error: detail,
                 }
               : message,
           ),

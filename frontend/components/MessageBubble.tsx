@@ -1,7 +1,7 @@
 "use client";
 
 import { memo, useEffect, useRef, useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { ThoughtProcess } from "@/components/ThoughtProcess";
@@ -79,7 +79,7 @@ export const MessageBubble = memo(function MessageBubble({
             {message.content}
           </ReactMarkdown>
         </div>
-      ) : isStreamingActive ? (
+      ) : message.error ? null : isStreamingActive ? (
         <div role="status" className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
           <span className="response-typing" aria-hidden="true">
             <span />
@@ -90,6 +90,15 @@ export const MessageBubble = memo(function MessageBubble({
         </div>
       ) : (
         <p className="text-sm text-muted-foreground">Response stopped.</p>
+      )}
+      {message.error && (
+        <div
+          role="alert"
+          className="mt-3 flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100"
+        >
+          <Info className="mt-1 size-4 shrink-0" aria-hidden="true" />
+          <p>{message.error}</p>
+        </div>
       )}
       <ThoughtProcess thoughts={message.thoughts} />
       {!!message.content && !isStreamingActive && (

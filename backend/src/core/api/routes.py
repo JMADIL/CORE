@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from langchain_core.messages import HumanMessage
 
 from core.api.dependencies import session_owner
+from core.api.errors import chat_error_response
 from core.api.schemas import ChatRequest, CancelRequest, HealthResponse
 from core.api.cancellation import cancellable_events
 from core.api.streaming import sse, text_content
@@ -77,9 +78,9 @@ async def chat_endpoint(payload: ChatRequest, request: Request, owner: str = Dep
             yield sse("done", {"session_id": session_id})
         except TimeoutError:
             yield sse("error", {"detail": "The response timed out. Please try again."})
-        except Exception:
+        except Exception as error:
             logger.exception("Chat failed for session %s", session_id)
-            yield sse("error", {"detail": "Unable to complete the response. Please try again."})
+            yield sse("error", chat_error_response(error))
         finally:
             # Failed and cancelled turns never commit partial conversation history.
             await asyncio.shield(asyncio.to_thread(store.finish, session_id, lease))

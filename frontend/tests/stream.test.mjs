@@ -65,3 +65,13 @@ test("active thread merge preserves other threads without mutating storage", () 
   assert.equal(result[1].id, "old");
   assert.equal(saved.length, 1);
 });
+
+test("limit notices survive history reload without becoming response text", () => {
+  const error = "We've reached our AI model's daily usage limit.";
+  const saved = mergeSession([], "limited", [{ id: "m", role: "assistant", content: "", error, thoughts: [] }]);
+  const restored = parseSessions(JSON.stringify(saved))[0].messages[0];
+  assert.equal(restored.error, error);
+  assert.equal(restored.content, "");
+  const invalid = [{ id: "limited", messages: [{ id: "m", role: "assistant", content: "", error: { private: "invalid" } }] }];
+  assert.equal(parseSessions(JSON.stringify(invalid))[0].messages[0].error, undefined);
+});
