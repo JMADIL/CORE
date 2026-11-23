@@ -13,6 +13,11 @@ from core.integrations.mcp.config import get_mcp_server_configs
 
 
 class ElevenLabsTests(unittest.IsolatedAsyncioTestCase):
+    def setUp(self):
+        self.mode = patch.object(settings, "ELEVENLABS_SHARED_ACCOUNT", False)
+        self.mode.start()
+        self.addCleanup(self.mode.stop)
+
     async def test_production_uses_sdk_runtime_oidc_resolution(self):
         with patch.dict(os.environ, {"VERCEL": "1"}):
             self.assertIsNone(elevenlabs.options().vercel_token)

@@ -7,9 +7,9 @@ A chat application using LangGraph orchestration, MCP tools, a FastAPI streaming
 Deploy both application services on Vercel with Neon PostgreSQL using the
 [Vercel deployment guide](docs/deploy-vercel.md).
 
-Connect your ElevenLabs account from the sidebar to use the official
-ElevenCreative MCP tools for images, speech, music, sound effects, and video.
-Generations use the connected account's credits. See the
+Core's public media demo uses the owner's ElevenLabs credits; visitors do not
+need an ElevenLabs account. The owner authorizes the shared account once through
+Vercel Connect. Personal-account mode remains configurable. See the
 [ElevenLabs setup guide](docs/elevenlabs.md) for deployment and local setup.
 
 ## Repository layout

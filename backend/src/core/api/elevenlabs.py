@@ -19,22 +19,28 @@ def configured():
         raise HTTPException(503, "ElevenLabs is not configured on this deployment.")
 
 
+def personal_management_only():
+    if settings.ELEVENLABS_SHARED_ACCOUNT:
+        raise HTTPException(403, "The shared account is managed by Core's owner.")
+
+
 @router.get("")
 async def connection_status(response: Response, owner: str = Depends(session_owner)):
     response.headers["Cache-Control"] = "no-store"
+    mode = "shared" if settings.ELEVENLABS_SHARED_ACCOUNT else "personal"
     if not elevenlabs.enabled():
-        return {"enabled": False, "connected": False}
+        return {"enabled": False, "connected": False, "mode": mode}
     try:
         await elevenlabs.provider_token(owner, force_refresh=True)
-        return {"enabled": True, "connected": True}
+        return {"enabled": True, "connected": True, "mode": mode}
     except (UserAuthorizationRequiredError, AuthorizationPendingError):
-        return {"enabled": True, "connected": False}
+        return {"enabled": True, "connected": False, "mode": mode}
     except Exception as error:
         logger.warning("ElevenLabs connection status unavailable (%s)", type(error).__name__)
         raise HTTPException(503, "Could not check ElevenLabs. Please try again later.") from None
 
 
-@router.post("/connect", dependencies=[Depends(configured)])
+@router.post("/connect", dependencies=[Depends(configured), Depends(personal_management_only)])
 async def connect_account(response: Response, owner: str = Depends(session_owner)):
     # Configured origin only: never accept a client-controlled redirect or Host.
     origin = settings.CORE_PUBLIC_URL.rstrip("/")
@@ -53,7 +59,7 @@ async def connect_account(response: Response, owner: str = Depends(session_owner
         raise HTTPException(503, "Could not start ElevenLabs sign-in. Please try again later.") from None
 
 
-@router.delete("", status_code=204, dependencies=[Depends(configured)])
+@router.delete("", status_code=204, dependencies=[Depends(configured), Depends(personal_management_only)])
 async def disconnect_account(owner: str = Depends(session_owner)):
     try:
         await connect.revoke_token(

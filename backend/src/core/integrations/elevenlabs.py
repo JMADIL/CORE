@@ -1,7 +1,7 @@
-"""Official ElevenCreative MCP authentication, scoped to each browser owner.
+"""Official ElevenCreative MCP authentication, with personal and shared modes.
 
 Vercel Connect owns OAuth consent and refresh tokens. Provider credentials never
-reach the browser and are never shared between Core's anonymous sessions.
+reach the browser. Shared mode uses a server-selected provider subject.
 """
 import os
 
@@ -13,6 +13,7 @@ from vercel.connect import ConnectOptions, ConnectUserTokenSubject
 from core.config import REPOSITORY_ROOT, settings
 
 MCP_URL = "https://api.elevenlabs.io/v1/mcp-creative"
+SHARED_SUBJECT = "core-shared-demo-v1"
 SCOPES = ["user_read", "flows", "image_video_generation", "text_to_speech", "voice_generation"]
 CREATIVE_TOOLS = {
     "creative_generate_image", "creative_edit_image", "creative_generate_video",
@@ -33,6 +34,8 @@ class ElevenLabsUnavailable(Exception):
             "Core could not access the ElevenLabs generation tools. Open ElevenLabs in the sidebar "
             "to check or reconnect your account, then try again."
         )
+        if settings.ELEVENLABS_SHARED_ACCOUNT:
+            self.detail = "Media generation is temporarily unavailable. Core's owner needs to connect or renew the shared ElevenLabs account. You do not need your own account."
         super().__init__(self.detail)
 
 
@@ -70,7 +73,8 @@ def options(*, force_refresh=False):
 
 async def provider_token(owner: str, *, force_refresh=False) -> str:
     return await connect.get_token(
-        settings.ELEVENLABS_CONNECTOR, subject=ConnectUserTokenSubject(id=owner),
+        settings.ELEVENLABS_CONNECTOR,
+        subject=ConnectUserTokenSubject(id=SHARED_SUBJECT if settings.ELEVENLABS_SHARED_ACCOUNT else owner),
         scopes=SCOPES, resources=[MCP_URL], options=options(force_refresh=force_refresh),
     )
 

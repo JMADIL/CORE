@@ -18,7 +18,7 @@ class PostgresTests(unittest.TestCase):
         self.store = PostgresSessionStore(self.url)
         # This suite is deliberately opt-in: it owns the test database tables.
         with self.store.connect() as db:
-            db.execute("TRUNCATE sessions, requests")
+            db.execute("TRUNCATE sessions, requests, media_requests, media_resources")
 
     def test_history_survives_new_store_instance(self):
         lease, history = self.store.claim("one", "owner", "client")
@@ -27,6 +27,23 @@ class PostgresTests(unittest.TestCase):
         other = PostgresSessionStore(self.url)
         _, history = other.claim("one", "owner", "client")
         self.assertEqual([message.content for message in history], ["hello", "hi"])
+
+    def test_shared_generation_limit_is_atomic_across_instances(self):
+        def reserve(index):
+            try:
+                PostgresSessionStore(self.url).reserve_media(f"visitor-{index}")
+                return True
+            except RateLimitExceeded:
+                return False
+        with patch.object(settings, "ELEVENLABS_DEMO_GLOBAL", 2):
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                results = list(pool.map(reserve, range(6)))
+        self.assertEqual(sum(results), 2)
+        self.store.remember_media_resource("flow:mine", "owner")
+        other = PostgresSessionStore(self.url)
+        other.check_media_resource("flow:mine", "owner")
+        with self.assertRaises(SessionAccessDenied):
+            other.check_media_resource("flow:mine", "different-visitor")
 
     def test_concurrent_claims_have_one_winner(self):
         def claim(_):

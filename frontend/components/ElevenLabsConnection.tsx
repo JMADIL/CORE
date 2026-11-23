@@ -15,6 +15,7 @@ import { elevenLabsConnection } from "@/lib/api";
 
 export function ElevenLabsConnection() {
   const [connected, setConnected] = useState(false);
+  const [shared, setShared] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -29,6 +30,7 @@ export function ElevenLabsConnection() {
         return;
       }
       setConnected(!!result.connected);
+      setShared(result.mode === "shared");
       setEnabled(!!result.enabled);
     } catch (reason) {
       setError(
@@ -62,14 +64,15 @@ export function ElevenLabsConnection() {
         <DialogHeader>
           <DialogTitle>ElevenLabs</DialogTitle>
           <DialogDescription>
-            Create images, speech, music, sound effects, and video through your
-            ElevenLabs account.
+            {shared
+              ? "Try media generation using Core’s shared ElevenLabs credits."
+              : "Create images, speech, music, sound effects, and video through your ElevenLabs account."}
           </DialogDescription>
         </DialogHeader>
         <p className="text-sm leading-6 text-muted-foreground">
-          Generations use your ElevenLabs credits. Sign-in alone does not
-          generate media. This connection belongs to this browser; other users
-          connect their own accounts.
+          {shared
+            ? "No ElevenLabs account or sign-in is needed. Ask Core to create media. Public demo limits apply."
+            : "Generations use your ElevenLabs credits. Sign-in alone does not generate media. This connection belongs to this browser; other users connect their own accounts."}
         </p>
         {error && (
           <p role="alert" className="text-sm text-destructive">
@@ -84,6 +87,13 @@ export function ElevenLabsConnection() {
             >
               <LoaderCircle className="size-4 animate-spin" />
               Checking connection…
+            </p>
+          ) : shared ? (
+            <p role="status" className="flex items-center gap-2 text-sm">
+              {connected && <Check className="size-4 text-emerald-600" />}
+              {connected
+                ? "Shared demo ready"
+                : "The shared demo is being prepared. Please try again later."}
             </p>
           ) : connected ? (
             <>

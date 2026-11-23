@@ -111,7 +111,12 @@ export { API_BASE_URL };
 
 export async function elevenLabsConnection(
   method: "GET" | "POST" | "DELETE" = "GET",
-): Promise<{ enabled?: boolean; connected?: boolean; url?: string }> {
+): Promise<{
+  enabled?: boolean;
+  connected?: boolean;
+  url?: string;
+  mode?: "personal" | "shared";
+}> {
   const response = await checked(
     await fetch(
       `${API_BASE_URL}/api/integrations/elevenlabs${method === "POST" ? "/connect" : ""}`,

@@ -49,6 +49,7 @@ class APITests(unittest.TestCase):
         self.patches = [patch.object(settings, "DATABASE_PATH", str(Path(self.temp.name) / "sessions.db")),
                         patch.object(settings, "DATABASE_URL", ""),
                         patch.object(settings, "ELEVENLABS_CONNECTOR", ""),
+                        patch.object(settings, "ELEVENLABS_SHARED_ACCOUNT", False),
                         patch.object(settings, "CORE_PUBLIC_URL", ""),
                         patch.object(settings, "CHAT_API_KEY", ""), patch.object(settings, "REQUESTS_PER_MINUTE", 30),
                         patch.object(api, "build_graph", return_value=self.graph)]
@@ -238,10 +239,10 @@ class APITests(unittest.TestCase):
         from core.api import elevenlabs as routes
         path = "/backend/api/integrations/elevenlabs"
         self.assertEqual(self.client.get(path).status_code, 422)
-        self.assertEqual(self.client.get(path, headers=HEADERS).json(), {"enabled": False, "connected": False})
+        self.assertEqual(self.client.get(path, headers=HEADERS).json(), {"enabled": False, "connected": False, "mode": "personal"})
         with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(settings, "CORE_PUBLIC_URL", "https://core.example"), patch.object(routes.elevenlabs, "provider_token", AsyncMock(return_value="private-token")) as token:
             response = self.client.get(path, headers=HEADERS)
-        self.assertEqual(response.json(), {"enabled": True, "connected": True})
+        self.assertEqual(response.json(), {"enabled": True, "connected": True, "mode": "personal"})
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(token.await_args.args, (session_owner(TOKEN, ""),))
 
@@ -270,6 +271,16 @@ class APITests(unittest.TestCase):
             self.assertEqual(self.client.get("/backend/api/integrations/elevenlabs", headers={**HEADERS, "x-vercel-oidc-token": "platform-request-token"}).status_code, 200)
             self.assertEqual(self.client.get("/backend/api/integrations/elevenlabs", headers=HEADERS).status_code, 200)
         self.assertEqual(observed, ["platform-request-token", None])
+
+    def test_visitors_cannot_replace_or_disconnect_shared_account(self):
+        from core.api import elevenlabs as routes
+        path = "/backend/api/integrations/elevenlabs"
+        with patch.object(settings, "ELEVENLABS_SHARED_ACCOUNT", True), patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/shared"), patch.object(settings, "CORE_PUBLIC_URL", "https://core.example"), patch.object(routes.connect, "start_authorization", AsyncMock()) as start, patch.object(routes.connect, "revoke_token", AsyncMock()) as revoke, patch.object(routes.elevenlabs, "provider_token", AsyncMock(return_value="secret")):
+            self.assertEqual(self.client.post(path + "/connect", headers=HEADERS).status_code, 403)
+            self.assertEqual(self.client.delete(path, headers=HEADERS).status_code, 403)
+            self.assertEqual(self.client.get(path, headers=HEADERS).json(), {"enabled": True, "connected": True, "mode": "shared"})
+        start.assert_not_called()
+        revoke.assert_not_called()
 
     def test_elevenlabs_authorization_uses_configured_return_url_and_disconnects_owner_only(self):
         from core.api import elevenlabs as routes

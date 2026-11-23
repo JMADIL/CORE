@@ -29,7 +29,9 @@ async def discover_tools(owner: str | None = None, *, require_elevenlabs=False):
             async with asyncio.timeout(settings.DISCOVERY_TIMEOUT_SECONDS):
                 group = await MultiServerMCPClient({"elevenlabs": remote}, handle_tool_errors=False).get_tools(server_name="elevenlabs")
             from core.integrations.elevenlabs import CREATIVE_TOOLS
-            approved = [tool for tool in group if tool.name in CREATIVE_TOOLS]
+            from core.integrations.shared_media import SHARED_TOOLS
+            allowed = SHARED_TOOLS if settings.ELEVENLABS_SHARED_ACCOUNT else CREATIVE_TOOLS
+            approved = [tool for tool in group if tool.name in allowed]
             if require_elevenlabs and not approved:
                 raise ElevenLabsUnavailable()
             for tool in approved:
