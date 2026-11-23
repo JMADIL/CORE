@@ -10,6 +10,7 @@ from core.api.errors import session_error_response
 from core.api.limits import ChatBodyLimit
 from core.api.routes import router
 from core.api.elevenlabs import router as elevenlabs_router
+from core.api.vercel_context import VercelRequestContext
 from core.config import settings
 from core.graph.builder import build_graph
 from core.storage.errors import SessionError
@@ -25,6 +26,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Multi-Agent Chatbot Core API", version="0.1.0", lifespan=lifespan)
 app.add_middleware(ChatBodyLimit)
+app.add_middleware(VercelRequestContext)
 app.add_middleware(
     CORSMiddleware, allow_origins=settings.ALLOWED_ORIGINS,
     allow_methods=["GET", "POST", "DELETE"],

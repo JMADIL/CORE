@@ -245,6 +245,18 @@ class APITests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(token.await_args.args, (session_owner(TOKEN, ""),))
 
+    def test_vercel_sdk_headers_follow_only_the_current_request(self):
+        from core.api import elevenlabs as routes
+        from vercel.headers import get_headers
+        observed = []
+        async def token(*args, **kwargs):
+            observed.append(get_headers().get("x-vercel-oidc-token"))
+            return "provider-token"
+        with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(settings, "CORE_PUBLIC_URL", "https://core.example"), patch.object(routes.elevenlabs, "provider_token", side_effect=token):
+            self.assertEqual(self.client.get("/backend/api/integrations/elevenlabs", headers={**HEADERS, "x-vercel-oidc-token": "platform-request-token"}).status_code, 200)
+            self.assertEqual(self.client.get("/backend/api/integrations/elevenlabs", headers=HEADERS).status_code, 200)
+        self.assertEqual(observed, ["platform-request-token", None])
+
     def test_elevenlabs_authorization_uses_configured_return_url_and_disconnects_owner_only(self):
         from core.api import elevenlabs as routes
         path = "/backend/api/integrations/elevenlabs"
