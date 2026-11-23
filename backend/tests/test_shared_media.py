@@ -99,3 +99,21 @@ class SharedMediaTests(unittest.IsolatedAsyncioTestCase):
             with patch.object(tool_agent, 'discover_tools', AsyncMock(return_value=[tool])), patch.object(tool_agent, 'create_llm', return_value=model):
                 with self.assertRaises(RateLimitExceeded):
                     await tool_agent.tool_agent_node({'messages': [HumanMessage(content='Generate image')]}, {'configurable': {'owner': 'a', 'store': self.store}})
+
+    async def test_provider_daily_image_limit_is_raised_without_retry_or_raw_error(self):
+        calls = []
+        async def generate(prompt: str) -> str:
+            """Simulate the hosted provider limit without a real generation."""
+            calls.append(prompt)
+            raise ExceptionGroup('MCP tool error', [RuntimeError('{"error":"429: free_tier_image_limit_reached private-account-details"}')])
+        tool = StructuredTool.from_function(coroutine=generate, name='elevenlabs_creative_generate_image')
+        model = AsyncMock()
+        model.bind_tools = lambda tools: model
+        model.ainvoke.return_value = AIMessage(content='', tool_calls=[{'name': tool.name, 'args': {'prompt': 'banana'}, 'id': 'one'}])
+        with patch.object(tool_agent, 'discover_tools', AsyncMock(return_value=[tool])), patch.object(tool_agent, 'create_llm', return_value=model):
+            with self.assertRaises(elevenlabs.ElevenLabsImageLimit) as raised:
+                await tool_agent.tool_agent_node({'messages': [HumanMessage(content='Generate a banana image')]}, {'configurable': {'owner': 'a', 'store': self.store}})
+        self.assertEqual(calls, ['banana'])
+        self.assertIn('daily image generation limit', str(raised.exception))
+        self.assertNotIn('private-account-details', str(raised.exception))
+        self.assertFalse(elevenlabs.image_limit_reached(RuntimeError('Unrelated tool error')))

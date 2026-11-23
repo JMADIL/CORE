@@ -13,6 +13,7 @@ from core.integrations.content import text_content
 from core.graph.intents import requests_media
 from core.integrations.shared_media import GENERATIONS, guard_call, remember_results
 from core.integrations.media_results import complete_media_run
+from core.integrations.elevenlabs import ElevenLabsImageLimit, image_limit_reached
 from core.storage.errors import RateLimitExceeded, SessionAccessDenied
 
 logger = logging.getLogger("tool_agent")
@@ -96,7 +97,9 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
             raise
         except SessionAccessDenied as error:
             output, status = str(error), "error"
-        except Exception:
+        except Exception as error:
+            if call["name"].startswith("elevenlabs_") and image_limit_reached(error):
+                raise ElevenLabsImageLimit() from None
             logger.warning("Tool %s failed", call["name"], exc_info=True)
             output, status = "Tool execution failed or timed out. Do not invent its result.", "error"
         messages.append(ToolMessage(content=output, name=call["name"], tool_call_id=call["id"], status=status))

@@ -189,6 +189,18 @@ class APITests(unittest.TestCase):
             self.assertEqual(response.status_code, 429)
             self.assertEqual(response.headers["retry-after"], "60")
 
+    def test_elevenlabs_image_daily_limit_has_direct_notice_and_chat_can_continue(self):
+        from core.integrations.elevenlabs import ElevenLabsImageLimit
+        with patch.object(settings, 'ELEVENLABS_SHARED_ACCOUNT', True):
+            self.graph.failure = ElevenLabsImageLimit()
+            response = self.chat('Generate a banana image')
+        self.assertIn('"code": "elevenlabs_image_daily_limit"', response.text)
+        self.assertIn('shared ElevenLabs account', response.text)
+        self.assertIn('daily image generation limit', response.text)
+        self.assertNotIn('event: done', response.text)
+        self.graph.failure = None
+        self.assertIn('event: done', self.chat('hello').text)
+
     def test_model_daily_limit_is_explained_and_session_can_continue(self):
         self.chat("first")
         self.graph.failure = RateLimitError(

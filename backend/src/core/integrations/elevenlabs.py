@@ -39,6 +39,23 @@ class ElevenLabsUnavailable(Exception):
         super().__init__(self.detail)
 
 
+class ElevenLabsImageLimit(Exception):
+    code = "elevenlabs_image_daily_limit"
+
+    def __init__(self):
+        account = "Core's shared ElevenLabs account" if settings.ELEVENLABS_SHARED_ACCOUNT else "Your connected ElevenLabs account"
+        self.detail = f"{account} has reached its daily image generation limit. Please try again after ElevenLabs resets the limit."
+        super().__init__(self.detail)
+
+
+def image_limit_reached(error: BaseException) -> bool:
+    # Hosted MCP wraps provider errors as tool exceptions, sometimes in task
+    # groups. Match the provider's code; never return its raw error to visitors.
+    if isinstance(error, BaseExceptionGroup):
+        return any(image_limit_reached(child) for child in error.exceptions)
+    return "free_tier_image_limit_reached" in str(error)
+
+
 def needs_authorization(error: BaseException) -> bool:
     from vercel.connect import UserAuthorizationRequiredError, AuthorizationPendingError
     if isinstance(error, (UserAuthorizationRequiredError, AuthorizationPendingError)):
