@@ -75,7 +75,9 @@ async def provider_token(owner: str, *, force_refresh=False) -> str:
     return await connect.get_token(
         settings.ELEVENLABS_CONNECTOR,
         subject=ConnectUserTokenSubject(id=SHARED_SUBJECT if settings.ELEVENLABS_SHARED_ACCOUNT else owner),
-        scopes=SCOPES, resources=[MCP_URL], options=options(force_refresh=force_refresh),
+        # Match the consent request exactly. An additional resource indicator
+        # selects a different Vercel Connect grant and falsely asks for consent.
+        scopes=SCOPES, options=options(force_refresh=force_refresh),
     )
 
 

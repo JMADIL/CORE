@@ -10,7 +10,7 @@ from vercel import connect
 from vercel.connect import ConnectUserTokenSubject, UserAuthorizationRequiredError, AuthorizationPendingError
 
 from core.config import settings
-from core.integrations.elevenlabs import MCP_URL, SCOPES, SHARED_SUBJECT, options
+from core.integrations.elevenlabs import SCOPES, SHARED_SUBJECT, options
 
 
 async def main():
@@ -22,7 +22,7 @@ async def main():
     subject = ConnectUserTokenSubject(id=SHARED_SUBJECT)
     try:
         await connect.get_token(settings.ELEVENLABS_CONNECTOR, subject=subject, scopes=SCOPES,
-                                resources=[MCP_URL], options=options(force_refresh=True))
+                                options=options(force_refresh=True))
         print('Shared ElevenLabs account is authorized. Provider credentials remain in Vercel Connect.')
     except (UserAuthorizationRequiredError, AuthorizationPendingError):
         if args.check:

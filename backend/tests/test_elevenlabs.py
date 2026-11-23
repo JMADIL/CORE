@@ -24,12 +24,13 @@ class ElevenLabsTests(unittest.IsolatedAsyncioTestCase):
         with patch.dict(os.environ, {}, clear=True):
             self.assertTrue(callable(elevenlabs.options().vercel_token))
 
-    async def test_provider_credentials_are_scoped_to_owner_and_resource(self):
+    async def test_provider_credentials_match_owner_and_consent_scopes(self):
         with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(elevenlabs.connect, "get_token", AsyncMock(return_value="private-token")) as get_token:
             await elevenlabs.provider_token("owner-one")
             await elevenlabs.provider_token("owner-two")
         self.assertEqual([call.kwargs["subject"].id for call in get_token.await_args_list], ["owner-one", "owner-two"])
-        self.assertEqual(get_token.await_args.kwargs["resources"], [elevenlabs.MCP_URL])
+        self.assertNotIn("resources", get_token.await_args.kwargs)
+        self.assertEqual(get_token.await_args.kwargs["scopes"], elevenlabs.SCOPES)
         self.assertNotIn("convai_write", get_token.await_args.kwargs["scopes"])
 
     async def test_refresh_once_after_unauthorized_but_never_retry_rate_limit(self):
