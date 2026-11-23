@@ -8,7 +8,7 @@ import { ThoughtProcess } from "@/components/ThoughtProcess";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/types/chat";
 import { responseWords } from "@/lib/responseWords";
-import { generatedImages, imageLink } from "@/lib/media";
+import { generatedImages, uniqueImagePreviews } from "@/lib/media";
 import { ImagePreview } from "@/components/ImagePreview";
 
 const responsePlugins = [responseWords];
@@ -66,7 +66,7 @@ export const MessageBubble = memo(function MessageBubble({
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={responsePlugins}
+            rehypePlugins={[...responsePlugins, [uniqueImagePreviews, {sources: images.map(image => image.url), imageContext}]]}
             components={{
               table: ({ children }) => (
                 <div className="my-4 max-w-full overflow-x-auto">
@@ -74,13 +74,11 @@ export const MessageBubble = memo(function MessageBubble({
                 </div>
               ),
               a: ({ href, children }) => (
-                href && imageLink(href, imageContext) && !images.some(image => image.url === href) ?
-                <ImagePreview key={href} src={href} /> :
                 <a href={href} target="_blank" rel="noopener noreferrer">
                   {children}
                 </a>
               ),
-              img: ({ src, alt }) => typeof src === "string" && !images.some(image => image.url === src)
+              img: ({ src, alt }) => typeof src === "string"
                 ? <ImagePreview key={src} src={src} alt={alt} /> : null,
             }}
           >

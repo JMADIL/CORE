@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generatedImages, imageLink } from '../lib/media.ts';
+import { generatedImages, imageIdentity, imageLink, uniqueImagePreviews } from '../lib/media.ts';
 import { parseSessions } from '../lib/history.ts';
 
 const call = {id:'call', type:'tool_call', name:'elevenlabs_creative_generate_image', timestamp:1};
@@ -33,4 +33,39 @@ test('MCP text blocks are parsed, files deduplicated, noncreative tools ignored'
   const thought = result(block);
   assert.deepEqual(generatedImages([call,thought,thought]), [{url}]);
   assert.deepEqual(generatedImages([{...thought,name:'research_search_arxiv'}]), []);
+});
+
+test('refreshed signatures and URL aliases produce one preview with the newest file link', () => {
+  const refreshed = url.replace('a%2Fb', 'new-signature').replace('123', '456');
+  const thoughts = [call,
+    result({generations:[{content_url:url, download_url:'https://example.com/download-alias.png'}]}),
+    result({generations:[{content_url:refreshed}]}),
+  ];
+  assert.deepEqual(generatedImages(thoughts), [{url:refreshed}]);
+  assert.equal(imageIdentity(url),imageIdentity(refreshed));
+  assert.notEqual(imageIdentity(url), imageIdentity(url+'&width=320'));
+  assert.notEqual(imageIdentity(url), imageIdentity(url.replace('/result?', '/different?')));
+});
+
+test('Markdown images and download links share the tool preview rather than duplicating it', () => {
+  const refreshed = url.replace('a%2Fb', 'new-signature');
+  const tree = {type:'root',children:[
+    {type:'element',tagName:'img',properties:{src:url}},
+    {type:'element',tagName:'img',properties:{src:refreshed}},
+    {type:'element',tagName:'a',properties:{href:refreshed},children:[{type:'text',value:'Download'}]},
+  ]};
+  uniqueImagePreviews({sources:[url],imageContext:true})(tree);
+  assert.deepEqual(tree.children.map(node=>node.tagName), ['a']);
+});
+
+test('without tool results a repeated Markdown image/link still renders once; distinct files remain', () => {
+  const other='https://example.com/other.png';
+  const tree = {type:'root',children:[
+    {type:'element',tagName:'a',properties:{href:url}},
+    {type:'element',tagName:'img',properties:{src:url}},
+    {type:'element',tagName:'a',properties:{href:url}},
+    {type:'element',tagName:'img',properties:{src:other}},
+  ]};
+  uniqueImagePreviews({sources:[],imageContext:true})(tree);
+  assert.deepEqual(tree.children.map(node=>node.tagName), ['img','a','img']);
 });
