@@ -13,7 +13,26 @@ logger = logging.getLogger("mcp")
 _caches = WeakKeyDictionary()
 
 
-async def discover_tools():
+async def discover_tools(owner: str | None = None):
+    if owner:
+        # Reuse local tools globally, but rebuild remote tool closures with this
+        # browser's authority on every turn (including after disconnect).
+        local = await discover_tools()
+        remote = get_mcp_server_configs(owner).get("elevenlabs")
+        if not remote:
+            return local
+        try:
+            async with asyncio.timeout(settings.DISCOVERY_TIMEOUT_SECONDS):
+                group = await MultiServerMCPClient({"elevenlabs": remote}, handle_tool_errors=False).get_tools(server_name="elevenlabs")
+            from core.integrations.elevenlabs import CREATIVE_TOOLS
+            approved = [tool for tool in group if tool.name in CREATIVE_TOOLS]
+            for tool in approved:
+                tool.name = "elevenlabs_" + tool.name
+            return local + approved
+        except Exception:
+            # Not signing in must not break existing research/time tools.
+            logger.info("ElevenLabs tools unavailable for this browser")
+            return local
     loop = asyncio.get_running_loop()
     cache = _caches.setdefault(loop, {"lock": asyncio.Lock(), "until": 0, "tools": []})
     async with cache["lock"]:

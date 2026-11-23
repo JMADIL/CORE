@@ -11,7 +11,9 @@ TOOL_QUERY = re.compile(
     r"celsius|fahrenheit|climate|time|date|clock|timezone|research|arxiv|papers?|scientific|"
     r"bibliography|journal|publications?|search|maps?|directions|route|navigate|location|"
     r"distance|nearby|address|geocode|browse|screenshot|scrape|webpage|website|"
-    r"reasoning|step-by-step|sequential|music|song|minimax|audio)\b", re.I,
+    r"reasoning|step-by-step|sequential|music|song|minimax|audio|elevenlabs|elevencreative|"
+    r"voiceover|soundtrack|text-to-speech)\b|"
+    r"\b(?:generate|create|make|edit|animate)\b.{0,100}\b(?:image|picture|video|speech|sound effect)s?\b", re.I,
 )
 FOLLOW_UP = re.compile(r"^(and\b|what about\b|how about\b|also\b|there\b|now\b|same\b)", re.I)
 

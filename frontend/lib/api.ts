@@ -108,3 +108,22 @@ export async function checkHealth(
 }
 
 export { API_BASE_URL };
+
+export async function elevenLabsConnection(
+  method: "GET" | "POST" | "DELETE" = "GET",
+): Promise<{ enabled?: boolean; connected?: boolean; url?: string }> {
+  const response = await checked(
+    await fetch(
+      `${API_BASE_URL}/api/integrations/elevenlabs${method === "POST" ? "/connect" : ""}`,
+      {
+        method,
+        headers: { "X-Client-Token": clientToken() },
+        cache: "no-store",
+        signal: AbortSignal.timeout(20_000),
+      },
+    ),
+  );
+  return response.status === 204
+    ? { connected: false, enabled: true }
+    : response.json();
+}

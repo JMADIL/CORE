@@ -1,5 +1,6 @@
 import asyncio
 import unittest
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 from langchain_core.messages import AIMessage, AIMessageChunk, HumanMessage, ToolMessage
@@ -71,6 +72,21 @@ class GraphTests(unittest.IsolatedAsyncioTestCase):
         for text in ["Hello", "Write a training loop", "Explain datetime objects", "Update my resume"]:
             result = await supervisor_node({"messages": [HumanMessage(content=text)]})
             self.assertEqual(result["next_action"], "responder", text)
+
+    async def test_media_requests_reach_tool_agent(self):
+        for text in ["Generate an image of a cat", "Create a video of a beach", "Make a voiceover", "Use ElevenLabs"]:
+            result = await supervisor_node({"messages": [HumanMessage(content=text)]})
+            self.assertEqual(result["next_action"], "tool_agent", text)
+
+    async def test_real_graph_passes_browser_authority_to_discovery(self):
+        model = AsyncMock()
+        model.bind_tools = lambda tools: model
+        model.ainvoke.return_value = AIMessage(content="No generation requested")
+        async def writer(state):
+            return {"messages": [AIMessage(content="Done")]}
+        with patch.object(tool_agent, "discover_tools", AsyncMock(return_value=[SimpleNamespace(name="lookup")])) as discover, patch.object(tool_agent, "create_llm", return_value=model), patch("core.graph.builder.responder_node", writer):
+            await build_graph().ainvoke({"messages": [HumanMessage(content="List ElevenLabs models")], "tool_rounds": 0}, config={"configurable": {"owner": "browser-owner"}})
+        discover.assert_awaited_once_with("browser-owner")
 
     async def test_contextual_followups(self):
         messages = [HumanMessage(content="Weather in Tokyo?"), AIMessage(content="Sunny"), HumanMessage(content="And in Paris?")]

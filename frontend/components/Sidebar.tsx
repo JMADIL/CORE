@@ -17,6 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { GitHubCredit } from "@/components/GitHubCredit";
+import { ElevenLabsConnection } from "@/components/ElevenLabsConnection";
 import {
   Collapsible,
   CollapsibleContent,
@@ -208,6 +209,7 @@ export function AppSidebar({
       </SidebarContent>
       <SidebarSeparator className="bg-sidebar-border mx-4 data-[orientation=horizontal]:w-[calc(100%-2rem)]" />
       <SidebarFooter className="gap-3 px-3 pb-3 pt-3">
+        <ElevenLabsConnection />
         <Dialog>
           <DialogTrigger
             render={

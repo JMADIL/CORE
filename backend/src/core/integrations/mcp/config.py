@@ -7,7 +7,7 @@ from core.config import settings
 from core.integrations.llm import configured
 
 
-def get_mcp_server_configs() -> dict:
+def get_mcp_server_configs(owner: str | None = None) -> dict:
     # Pass only process essentials to third-party servers, not model/provider credentials.
     env = {key: value for key, value in os.environ.items() if key in {
         "PATH", "HOME", "USER", "LANG", "LC_ALL", "SYSTEMROOT", "TEMP", "TMP", "TMPDIR",
@@ -38,5 +38,12 @@ def get_mcp_server_configs() -> dict:
             configs["minimax"] = {
                 "transport": "stdio", "command": executable, "args": [],
                 "env": {**env, "MINIMAX_API_KEY": settings.MINIMAX_API_KEY, "MINIMAX_API_HOST": settings.MINIMAX_API_HOST},
+            }
+    if owner:
+        from core.integrations.elevenlabs import ElevenLabsAuth, MCP_URL, enabled
+        if enabled():
+            configs["elevenlabs"] = {
+                "transport": "streamable_http", "url": MCP_URL,
+                "auth": ElevenLabsAuth(owner), "timeout": 20, "sse_read_timeout": 30,
             }
     return configs

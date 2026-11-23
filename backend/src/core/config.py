@@ -35,6 +35,8 @@ class Settings(BaseSettings):
     GOOGLE_MAPS_API_KEY: str = ""
     MINIMAX_API_KEY: str = ""
     MINIMAX_API_HOST: str = ""
+    ELEVENLABS_CONNECTOR: str = ""
+    CORE_PUBLIC_URL: str = ""
 
     model_config = SettingsConfigDict(env_file=REPOSITORY_ROOT / ".env", extra="ignore")
 

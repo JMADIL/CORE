@@ -53,7 +53,7 @@ async def chat_endpoint(payload: ChatRequest, request: Request, owner: str = Dep
         final_messages = None
         try:
             async with asyncio.timeout(settings.CHAT_TIMEOUT_SECONDS):
-                events = request.app.state.graph.astream_events(initial_state, version="v2", config={"recursion_limit": 40})
+                events = request.app.state.graph.astream_events(initial_state, version="v2", config={"recursion_limit": 40, "configurable": {"owner": owner}})
                 async for event in cancellable_events(events, lambda: store.is_active(session_id, lease)):
                     kind, name = event.get("event"), event.get("name")
                     data = event.get("data", {})

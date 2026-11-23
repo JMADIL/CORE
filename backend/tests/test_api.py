@@ -3,8 +3,9 @@ import asyncio
 import importlib
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 import httpx
 from openai import RateLimitError
 
@@ -47,6 +48,8 @@ class APITests(unittest.TestCase):
         self.graph = FakeGraph()
         self.patches = [patch.object(settings, "DATABASE_PATH", str(Path(self.temp.name) / "sessions.db")),
                         patch.object(settings, "DATABASE_URL", ""),
+                        patch.object(settings, "ELEVENLABS_CONNECTOR", ""),
+                        patch.object(settings, "CORE_PUBLIC_URL", ""),
                         patch.object(settings, "CHAT_API_KEY", ""), patch.object(settings, "REQUESTS_PER_MINUTE", 30),
                         patch.object(api, "build_graph", return_value=self.graph)]
         for item in self.patches:
@@ -230,6 +233,30 @@ class APITests(unittest.TestCase):
     def test_cors_rejects_unlisted_origin(self):
         response = self.client.options("/api/chat", headers={"Origin": "https://untrusted.example", "Access-Control-Request-Method": "POST"})
         self.assertEqual(response.status_code, 400)
+
+    def test_elevenlabs_connection_hides_credentials_and_requires_owner(self):
+        from core.api import elevenlabs as routes
+        path = "/backend/api/integrations/elevenlabs"
+        self.assertEqual(self.client.get(path).status_code, 422)
+        self.assertEqual(self.client.get(path, headers=HEADERS).json(), {"enabled": False, "connected": False})
+        with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(settings, "CORE_PUBLIC_URL", "https://core.example"), patch.object(routes.elevenlabs, "provider_token", AsyncMock(return_value="private-token")) as token:
+            response = self.client.get(path, headers=HEADERS)
+        self.assertEqual(response.json(), {"enabled": True, "connected": True})
+        self.assertEqual(response.headers["cache-control"], "no-store")
+        self.assertEqual(token.await_args.args, (session_owner(TOKEN, ""),))
+
+    def test_elevenlabs_authorization_uses_configured_return_url_and_disconnects_owner_only(self):
+        from core.api import elevenlabs as routes
+        path = "/backend/api/integrations/elevenlabs"
+        with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(settings, "CORE_PUBLIC_URL", "https://core.example"), patch.object(routes.elevenlabs, "options", return_value=None), patch.object(routes.connect, "start_authorization", AsyncMock(return_value=SimpleNamespace(url="https://vercel.com/authorize/example"))) as start, patch.object(routes.connect, "revoke_token", AsyncMock()) as revoke:
+            response = self.client.post(path + "/connect", headers=HEADERS, json={"return_url": "https://attacker.example"})
+            self.assertEqual(response.json(), {"url": "https://vercel.com/authorize/example"})
+            self.assertEqual(start.await_args.kwargs["return_url"], "https://core.example/")
+            self.assertEqual(start.await_args.kwargs["subject"].id, session_owner(TOKEN, ""))
+            self.assertEqual(self.client.delete(path, headers=HEADERS).status_code, 204)
+            self.assertEqual(revoke.await_args.kwargs["subject"].id, session_owner(TOKEN, ""))
+        with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(settings, "CORE_PUBLIC_URL", "http://attacker.example"):
+            self.assertEqual(self.client.post(path + "/connect", headers=HEADERS).status_code, 503)
 
 
 if __name__ == "__main__":

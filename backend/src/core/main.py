@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.api.errors import session_error_response
 from core.api.limits import ChatBodyLimit
 from core.api.routes import router
+from core.api.elevenlabs import router as elevenlabs_router
 from core.config import settings
 from core.graph.builder import build_graph
 from core.storage.errors import SessionError
@@ -34,6 +35,8 @@ app.include_router(router)
 # Vercel Services forwards the original /backend/... request path. Local Next.js
 # rewrites strip that prefix, so retain both paths with the same dependencies.
 app.include_router(router, prefix="/backend", include_in_schema=False)
+app.include_router(elevenlabs_router)
+app.include_router(elevenlabs_router, prefix="/backend", include_in_schema=False)
 
 
 def run():
