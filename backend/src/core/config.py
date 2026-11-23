@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     MINIMAX_API_HOST: str = ""
     ELEVENLABS_CONNECTOR: str = ""
     ELEVENLABS_SHARED_ACCOUNT: bool = False
+    ELEVENLABS_OWNER_SETUP_HASH: str = ""
     ELEVENLABS_DEMO_PER_VISITOR: int = Field(default=5, ge=1, le=1000)
     ELEVENLABS_DEMO_GLOBAL: int = Field(default=20, ge=1, le=10000)
     CORE_PUBLIC_URL: str = ""

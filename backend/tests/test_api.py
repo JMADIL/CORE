@@ -1,6 +1,7 @@
 """Deterministic API regressions; no external models or MCP servers required."""
 import asyncio
 import importlib
+import hashlib
 import tempfile
 import unittest
 from types import SimpleNamespace
@@ -281,6 +282,24 @@ class APITests(unittest.TestCase):
             self.assertEqual(self.client.get(path, headers=HEADERS).json(), {"enabled": True, "connected": True, "mode": "shared"})
         start.assert_not_called()
         revoke.assert_not_called()
+
+    def test_shared_owner_setup_requires_private_key_and_uses_runtime_authority(self):
+        from core.api import elevenlabs as routes
+        key = 'test-owner-setup-key'
+        path = '/backend/api/integrations/elevenlabs/owner-connect'
+        result = SimpleNamespace(url='https://connect.vercel.com/authorize/test', device_code='TEST-CODE')
+        with patch.object(settings, 'ELEVENLABS_SHARED_ACCOUNT', True), patch.object(settings, 'ELEVENLABS_CONNECTOR', 'oauth/shared'), patch.object(settings, 'CORE_PUBLIC_URL', 'https://core.example'), patch.object(settings, 'ELEVENLABS_OWNER_SETUP_HASH', hashlib.sha256(key.encode()).hexdigest()), patch.object(routes.elevenlabs, 'options', return_value=None), patch.object(routes.connect, 'start_authorization', AsyncMock(return_value=result)) as start:
+            for headers in [HEADERS, {**HEADERS, 'X-Core-Setup-Key': 'wrong'}]:
+                self.assertEqual(self.client.post(path, headers=headers).status_code, 403)
+            start.assert_not_called()
+            response = self.client.post(path, headers={'X-Core-Setup-Key': key}, json={'subject': 'attacker'})
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.headers['Cache-Control'], 'no-store')
+            self.assertEqual(response.json(), {'url': result.url, 'device_code': result.device_code})
+            self.assertEqual(start.await_args.kwargs['subject'].id, routes.elevenlabs.SHARED_SUBJECT)
+            self.assertTrue(start.await_args.kwargs['device_code'])
+            with patch.object(settings, 'ELEVENLABS_OWNER_SETUP_HASH', ''):
+                self.assertEqual(self.client.post(path, headers={'X-Core-Setup-Key': key}).status_code, 404)
 
     def test_elevenlabs_authorization_uses_configured_return_url_and_disconnects_owner_only(self):
         from core.api import elevenlabs as routes

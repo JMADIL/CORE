@@ -1,8 +1,10 @@
 """Browser-owned ElevenLabs consent, status and disconnect endpoints."""
 import logging
+import hashlib
+import secrets
 from urllib.parse import urlsplit
 
-from fastapi import APIRouter, Depends, HTTPException, Response
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
 from vercel import connect
 from vercel.connect import ConnectUserTokenSubject, UserAuthorizationRequiredError, AuthorizationPendingError
 
@@ -57,6 +59,28 @@ async def connect_account(response: Response, owner: str = Depends(session_owner
     except Exception as error:
         logger.warning("ElevenLabs authorization could not start (%s)", type(error).__name__)
         raise HTTPException(503, "Could not start ElevenLabs sign-in. Please try again later.") from None
+
+
+@router.post("/owner-connect", dependencies=[Depends(configured)])
+async def owner_connect(response: Response, x_core_setup_key: str = Header(default="")):
+    # Only an operator holding the random setup key can initiate shared consent.
+    # Store its hash, never the key, on the deployment. Visitor tokens do not grant access.
+    expected = settings.ELEVENLABS_OWNER_SETUP_HASH
+    if not settings.ELEVENLABS_SHARED_ACCOUNT or len(expected) != 64:
+        raise HTTPException(404, "Owner setup is disabled.")
+    if not x_core_setup_key or not secrets.compare_digest(hashlib.sha256(x_core_setup_key.encode()).hexdigest(), expected):
+        raise HTTPException(403, "Owner setup credentials are required.")
+    response.headers["Cache-Control"] = "no-store"
+    try:
+        authorization = await connect.start_authorization(
+            settings.ELEVENLABS_CONNECTOR,
+            subject=ConnectUserTokenSubject(id=elevenlabs.SHARED_SUBJECT),
+            scopes=elevenlabs.SCOPES, device_code=True, options=elevenlabs.options(),
+        )
+        return {"url": authorization.url, "device_code": authorization.device_code}
+    except Exception as error:
+        logger.warning("Shared ElevenLabs setup unavailable (%s)", type(error).__name__)
+        raise HTTPException(503, "Could not start owner authorization. Please try again later.") from None
 
 
 @router.delete("", status_code=204, dependencies=[Depends(configured), Depends(personal_management_only)])
