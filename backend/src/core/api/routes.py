@@ -79,8 +79,12 @@ async def chat_endpoint(payload: ChatRequest, request: Request, owner: str = Dep
         except TimeoutError:
             yield sse("error", {"detail": "The response timed out. Please try again."})
         except Exception as error:
-            logger.exception("Chat failed for session %s", session_id)
-            yield sse("error", chat_error_response(error))
+            failure = chat_error_response(error)
+            if failure.get("code", "").startswith("elevenlabs_"):
+                logger.info("Media request blocked (%s)", failure["code"])
+            else:
+                logger.exception("Chat failed for session %s", session_id)
+            yield sse("error", failure)
         finally:
             # Failed and cancelled turns never commit partial conversation history.
             await asyncio.shield(asyncio.to_thread(store.finish, session_id, lease))

@@ -13,26 +13,36 @@ logger = logging.getLogger("mcp")
 _caches = WeakKeyDictionary()
 
 
-async def discover_tools(owner: str | None = None):
+async def discover_tools(owner: str | None = None, *, require_elevenlabs=False):
+    from core.integrations.elevenlabs import ElevenLabsUnavailable, needs_authorization
+    if require_elevenlabs and not owner:
+        raise ElevenLabsUnavailable(connection_required=True)
     if owner:
         # Reuse local tools globally, but rebuild remote tool closures with this
         # browser's authority on every turn (including after disconnect).
-        local = await discover_tools()
         remote = get_mcp_server_configs(owner).get("elevenlabs")
         if not remote:
-            return local
+            if require_elevenlabs:
+                raise ElevenLabsUnavailable()
+            return await discover_tools()
         try:
             async with asyncio.timeout(settings.DISCOVERY_TIMEOUT_SECONDS):
                 group = await MultiServerMCPClient({"elevenlabs": remote}, handle_tool_errors=False).get_tools(server_name="elevenlabs")
             from core.integrations.elevenlabs import CREATIVE_TOOLS
             approved = [tool for tool in group if tool.name in CREATIVE_TOOLS]
+            if require_elevenlabs and not approved:
+                raise ElevenLabsUnavailable()
             for tool in approved:
                 tool.name = "elevenlabs_" + tool.name
-            return local + approved
-        except Exception:
+        except Exception as error:
             # Not signing in must not break existing research/time tools.
-            logger.info("ElevenLabs tools unavailable for this browser")
-            return local
+            logger.info("ElevenLabs tools unavailable for this browser (%s)", type(error).__name__)
+            if require_elevenlabs:
+                if isinstance(error, ElevenLabsUnavailable):
+                    raise
+                raise ElevenLabsUnavailable(connection_required=needs_authorization(error)) from None
+            return await discover_tools()
+        return (await discover_tools()) + approved
     loop = asyncio.get_running_loop()
     cache = _caches.setdefault(loop, {"lock": asyncio.Lock(), "until": 0, "tools": []})
     async with cache["lock"]:

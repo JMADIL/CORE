@@ -245,6 +245,20 @@ class APITests(unittest.TestCase):
         self.assertEqual(response.headers["cache-control"], "no-store")
         self.assertEqual(token.await_args.args, (session_owner(TOKEN, ""),))
 
+    def test_monkey_image_request_explains_missing_connection_without_calling_model(self):
+        from core.graph.builder import build_graph
+        from core.integrations.elevenlabs import ElevenLabsUnavailable
+        from core.graph.nodes import tool_agent, responder
+        with patch.object(api.app.state, "graph", build_graph()), patch.object(tool_agent, "discover_tools", AsyncMock(side_effect=ElevenLabsUnavailable(connection_required=True))) as discover, patch.object(tool_agent, "create_llm") as planner, patch.object(responder, "create_llm") as writer:
+            response = self.chat("can you generate for me an image for a monkey", session="monkey")
+        self.assertIn('"code": "elevenlabs_connection_required"', response.text)
+        self.assertIn("Open ElevenLabs in the sidebar", response.text)
+        self.assertNotIn("event: done", response.text)
+        planner.assert_not_called()
+        writer.assert_not_called()
+        discover.assert_awaited_once_with(session_owner(TOKEN, ""), require_elevenlabs=True)
+        self.assertIn("event: done", self.chat("hello", session="monkey").text)
+
     def test_vercel_sdk_headers_follow_only_the_current_request(self):
         from core.api import elevenlabs as routes
         from vercel.headers import get_headers

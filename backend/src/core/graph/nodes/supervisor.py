@@ -5,6 +5,7 @@ from langchain_core.messages import HumanMessage
 
 from core.config import settings
 from core.graph.state import AgentState
+from core.graph.intents import requests_media
 
 TOOL_QUERY = re.compile(
     r"\b(weather|temp|temperature|forecast|rain|snow|degrees?|humid(?:ity)?|wind|"
@@ -25,7 +26,7 @@ async def supervisor_node(state: AgentState) -> dict:
     else:
         humans = [message for message in state.get("messages", []) if isinstance(message, HumanMessage)]
         query = str(humans[-1].content).strip() if humans else ""
-        needs_tools = bool(TOOL_QUERY.search(query))
+        needs_tools = bool(TOOL_QUERY.search(query)) or requests_media(query)
         if not needs_tools and FOLLOW_UP.search(query):
             # Carry tool intent through a chain of short follow-ups.
             for previous in reversed(humans[:-1]):

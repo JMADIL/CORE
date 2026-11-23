@@ -9,6 +9,9 @@ from core.storage.errors import (
 
 def chat_error_response(error: Exception) -> dict[str, str]:
     """Translate provider limits without exposing raw responses or credentials."""
+    from core.integrations.elevenlabs import ElevenLabsUnavailable
+    if isinstance(error, ElevenLabsUnavailable):
+        return {"code": error.code, "detail": error.detail}
     if getattr(error, "status_code", None) == 429 or getattr(error, "code", None) == 429:
         body = getattr(error, "body", None)
         details = body.get("error", body) if isinstance(body, dict) else {}

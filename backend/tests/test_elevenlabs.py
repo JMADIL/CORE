@@ -74,7 +74,7 @@ class ElevenLabsTests(unittest.IsolatedAsyncioTestCase):
     async def test_missing_remote_authorization_preserves_other_tools(self):
         mcp_client._caches.clear()
         def configs(owner=None):
-            return {"elevenlabs": {}} if owner else {}
+            return {"elevenlabs": {"url": elevenlabs.MCP_URL}} if owner else {}
         client = AsyncMock()
         client.get_tools.side_effect = RuntimeError("Authorization required")
         with patch.object(mcp_client, "get_mcp_server_configs", side_effect=configs), patch.object(mcp_client, "MultiServerMCPClient", return_value=client):
@@ -89,3 +89,28 @@ class ElevenLabsTests(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn("headers", config)
         with patch.object(settings, "ELEVENLABS_CONNECTOR", ""):
             self.assertNotIn("elevenlabs", get_mcp_server_configs("owner"))
+
+    async def test_media_request_preserves_wrapped_missing_authorization_reason(self):
+        from vercel.connect import UserAuthorizationRequiredError
+        import httpx2
+        error = UserAuthorizationRequiredError(
+            httpx2.Response(401, request=httpx2.Request('POST', 'https://api.vercel.com')),
+            'private authentication details',
+        )
+        wrapped = ExceptionGroup('MCP transport', [error])
+        client = AsyncMock()
+        client.get_tools.side_effect = wrapped
+        with patch.object(mcp_client, 'get_mcp_server_configs', return_value={'elevenlabs': {'url': elevenlabs.MCP_URL}}), patch.object(mcp_client, 'MultiServerMCPClient', return_value=client):
+            with self.assertRaises(elevenlabs.ElevenLabsUnavailable) as raised:
+                await mcp_client.discover_tools('owner', require_elevenlabs=True)
+        self.assertEqual(raised.exception.code, 'elevenlabs_connection_required')
+        self.assertIn('Connect ElevenLabs', str(raised.exception))
+        self.assertNotIn('private authentication', str(raised.exception))
+
+    async def test_media_request_does_not_silently_accept_missing_remote_tools(self):
+        client = AsyncMock()
+        client.get_tools.return_value = []
+        with patch.object(mcp_client, 'get_mcp_server_configs', return_value={'elevenlabs': {'url': elevenlabs.MCP_URL}}), patch.object(mcp_client, 'MultiServerMCPClient', return_value=client):
+            with self.assertRaises(elevenlabs.ElevenLabsUnavailable) as raised:
+                await mcp_client.discover_tools('owner', require_elevenlabs=True)
+        self.assertEqual(raised.exception.code, 'elevenlabs_unavailable')

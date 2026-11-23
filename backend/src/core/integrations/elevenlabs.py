@@ -23,6 +23,29 @@ CREATIVE_TOOLS = {
 }
 
 
+class ElevenLabsUnavailable(Exception):
+    def __init__(self, *, connection_required=False):
+        self.code = "elevenlabs_connection_required" if connection_required else "elevenlabs_unavailable"
+        self.detail = (
+            "Connect your ElevenLabs account to generate media. Open ElevenLabs in the sidebar, "
+            "choose Connect ElevenLabs, and complete sign-in. Then send your request again."
+            if connection_required else
+            "Core could not access the ElevenLabs generation tools. Open ElevenLabs in the sidebar "
+            "to check or reconnect your account, then try again."
+        )
+        super().__init__(self.detail)
+
+
+def needs_authorization(error: BaseException) -> bool:
+    from vercel.connect import UserAuthorizationRequiredError, AuthorizationPendingError
+    if isinstance(error, (UserAuthorizationRequiredError, AuthorizationPendingError)):
+        return True
+    # MCP transports can wrap the original authentication error in a task group.
+    if isinstance(error, BaseExceptionGroup):
+        return any(needs_authorization(child) for child in error.exceptions)
+    return False
+
+
 def enabled() -> bool:
     return bool(settings.ELEVENLABS_CONNECTOR and settings.CORE_PUBLIC_URL)
 

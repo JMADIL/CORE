@@ -78,6 +78,13 @@ class GraphTests(unittest.IsolatedAsyncioTestCase):
             result = await supervisor_node({"messages": [HumanMessage(content=text)]})
             self.assertEqual(result["next_action"], "tool_agent", text)
 
+    async def test_media_generation_and_prompt_writing_are_distinct(self):
+        from core.graph.intents import requests_media
+        for query in ["can you generate for me an image for a monkey", "Draw a monkey", "Read this aloud", "Make a sound effect", "Convert this to speech"]:
+            self.assertTrue(requests_media(query), query)
+        for query in ["Write a prompt for a monkey image", "Generate a detailed prompt for an image", "Explain video compression", "Tell me about monkeys"]:
+            self.assertFalse(requests_media(query), query)
+
     async def test_real_graph_passes_browser_authority_to_discovery(self):
         model = AsyncMock()
         model.bind_tools = lambda tools: model
