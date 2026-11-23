@@ -1,6 +1,6 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Info } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -8,6 +8,8 @@ import { ThoughtProcess } from "@/components/ThoughtProcess";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/types/chat";
 import { responseWords } from "@/lib/responseWords";
+import { generatedImages, imageLink } from "@/lib/media";
+import { ImagePreview } from "@/components/ImagePreview";
 
 const responsePlugins = [responseWords];
 
@@ -21,6 +23,8 @@ export const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const images = useMemo(() => generatedImages(message.thoughts), [message.thoughts]);
+  const imageContext = message.thoughts.some(thought => /elevenlabs_creative_(generate|edit)_image$/.test(thought.name));
   useEffect(() => () => clearTimeout(timer.current), []);
   const copy = async () => {
     try {
@@ -70,10 +74,14 @@ export const MessageBubble = memo(function MessageBubble({
                 </div>
               ),
               a: ({ href, children }) => (
+                href && imageLink(href, imageContext) && !images.some(image => image.url === href) ?
+                <ImagePreview key={href} src={href} /> :
                 <a href={href} target="_blank" rel="noopener noreferrer">
                   {children}
                 </a>
               ),
+              img: ({ src, alt }) => typeof src === "string" && !images.some(image => image.url === src)
+                ? <ImagePreview key={src} src={src} alt={alt} /> : null,
             }}
           >
             {message.content}
@@ -91,6 +99,7 @@ export const MessageBubble = memo(function MessageBubble({
       ) : (
         <p className="text-sm text-muted-foreground">Response stopped.</p>
       )}
+      {images.map(image => <ImagePreview key={image.url} src={image.url} />)}
       {message.error && (
         <div
           role="alert"

@@ -78,6 +78,13 @@ class GraphTests(unittest.IsolatedAsyncioTestCase):
             result = await supervisor_node({"messages": [HumanMessage(content=text)]})
             self.assertEqual(result["next_action"], "tool_agent", text)
 
+    async def test_show_existing_media_uses_tools_without_a_new_generation_request(self):
+        messages = [HumanMessage(content='Generate a monkey image'),
+                    ToolMessage(content='{"flow_id":"existing","session_ids":["run"]}', name='elevenlabs_creative_generate_image', tool_call_id='image'),
+                    AIMessage(content='Generation started.'), HumanMessage(content='Show me the image')]
+        self.assertEqual((await supervisor_node({'messages': messages}))['next_action'], 'tool_agent')
+        self.assertEqual((await supervisor_node({'messages': [HumanMessage(content='Show me an example of recursion')]}))['next_action'], 'responder')
+
     async def test_media_generation_and_prompt_writing_are_distinct(self):
         from core.graph.intents import requests_media
         for query in ["can you generate for me an image for a monkey", "Draw a monkey", "Read this aloud", "Make a sound effect", "Convert this to speech"]:

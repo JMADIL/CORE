@@ -62,7 +62,10 @@ async def chat_endpoint(payload: ChatRequest, request: Request, owner: str = Dep
                     elif kind == "on_tool_start":
                         yield sse("tool_call", {"tool": name, "input": data.get("input")})
                     elif kind == "on_tool_end":
-                        yield sse("tool_result", {"tool": name, "output": str(data.get("output"))[:20000]})
+                        output = data.get("output")
+                        content = getattr(output, "content", output)
+                        result = text_content(content) if isinstance(content, (str, list)) else str(content)
+                        yield sse("tool_result", {"tool": name, "output": result[:20000]})
                     elif kind == "on_chat_model_stream" and event.get("metadata", {}).get("langgraph_node") == "responder":
                         chunk = data.get("chunk")
                         token = text_content(chunk.content) if chunk else ""

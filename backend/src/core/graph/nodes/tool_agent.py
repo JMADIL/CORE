@@ -12,6 +12,7 @@ from core.integrations.mcp.client import discover_tools
 from core.integrations.content import text_content
 from core.graph.intents import requests_media
 from core.integrations.shared_media import GENERATIONS, guard_call, remember_results
+from core.integrations.media_results import complete_media_run
 from core.storage.errors import RateLimitExceeded, SessionAccessDenied
 
 logger = logging.getLogger("tool_agent")
@@ -50,6 +51,8 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
         "generate images or audio. Your base model's text-only output does not limit these tools. "
         "Only start a generation when the user explicitly requests media creation. Never repeat a generation that "
         "is still running; inspect its status instead. Return available download links, "
+        "When asked to show or check earlier media, reuse the existing flow_id and session_ids "
+        "from previous tool results and call the read-only status tool; do not generate again. "
         "and describe pending work honestly. " +
         ("If shared tools are unavailable, say the shared demo is temporarily unavailable. "
          "Visitors do not connect an account. " if settings.ELEVENLABS_SHARED_ACCOUNT else
@@ -84,6 +87,8 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
             output = text_content(output) if isinstance(output, (str, list)) else str(output)
             if shared:
                 await asyncio.to_thread(remember_results, output, owner, store)
+            if call["name"].startswith("elevenlabs_") and call["name"].removeprefix("elevenlabs_") in GENERATIONS and not args.get("estimate_only"):
+                output = await complete_media_run(output, tool_map, owner, store)
             limit = 12000 if call["name"].startswith(("research_", "elevenlabs_")) else 4000
             if len(output) > limit:
                 output = output[:limit] + "\n[Output truncated]"
