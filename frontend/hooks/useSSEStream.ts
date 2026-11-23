@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import { sendChatMessage, cancelChatRequest } from "../lib/api";
-import { readSSE } from "../lib/sse";
+import { completedText, readSSE } from "../lib/sse";
 
 import type { Message, ThoughtNode, ActiveAgent } from "../types/chat";
 
@@ -150,11 +150,17 @@ export function useSSEStream() {
     );
     try {
       const response = await turn.response;
+      let streamedText = "";
       for await (const { event, data } of readSSE(
         response,
         controller.signal,
       )) {
         if (!current()) break;
+        if (event === "done") {
+          const content = completedText(streamedText, data.content);
+          setMessages(previous => previous.map(message => message.id === assistantId ? {...message, content} : message));
+          continue;
+        }
         let thought: ThoughtNode | undefined;
         if (
           event === "agent_state" &&
@@ -189,6 +195,7 @@ export function useSSEStream() {
         }
         if (event === "token" && typeof data.token !== "string")
           throw new Error("Invalid text received from server.");
+        if (event === "token") streamedText += data.token as string;
         if (thought || event === "token") {
           const nextThought = thought;
           const token = event === "token" ? (data.token as string) : "";

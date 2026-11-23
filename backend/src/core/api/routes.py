@@ -6,7 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Request, Response
 from fastapi.responses import StreamingResponse
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import AIMessage, HumanMessage
 
 from core.api.dependencies import session_owner
 from core.api.errors import chat_error_response
@@ -77,8 +77,14 @@ async def chat_endpoint(payload: ChatRequest, request: Request, owner: str = Dep
                 if not await asyncio.to_thread(store.is_active, session_id, lease):
                     return
                 raise RuntimeError("Graph did not return a final conversation")
+            final = final_messages[-1]
+            final_text = text_content(final.content) if isinstance(final, AIMessage) and not final.tool_calls else ""
+            if not final_text.strip():
+                raise RuntimeError("Graph did not return a final answer")
             await asyncio.to_thread(store.finish, session_id, lease, final_messages)
-            yield sse("done", {"session_id": session_id})
+            # Some provider/callback paths return a complete answer without
+            # forwarding token events. The committed answer is authoritative.
+            yield sse("done", {"session_id": session_id, "content": final_text})
         except TimeoutError:
             yield sse("error", {"detail": "The response timed out. Please try again."})
         except Exception as error:

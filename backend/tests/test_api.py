@@ -74,6 +74,27 @@ class APITests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn('event: token\ndata: {"token": "Hello"}', response.text)
         self.assertIn("event: done", response.text)
+        self.assertIn('"content": "Hello"', response.text)
+
+    def test_completed_answer_is_delivered_when_provider_emits_no_tokens(self):
+        async def events(state, **kwargs):
+            yield {'event': 'on_chain_start', 'name': 'responder'}
+            yield {'event': 'on_chain_end', 'name': 'LangGraph', 'parent_ids': [],
+                   'data': {'output': {'messages': state['messages'] + [AIMessage(content='Your image is still generating.')]}}}
+        with patch.object(self.graph, 'astream_events', side_effect=events):
+            response = self.chat()
+        self.assertNotIn('event: token', response.text)
+        self.assertIn('event: done', response.text)
+        self.assertIn('"content": "Your image is still generating."', response.text)
+
+    def test_empty_final_answer_is_an_error_instead_of_empty_success(self):
+        async def events(state, **kwargs):
+            yield {'event': 'on_chain_end', 'name': 'LangGraph', 'parent_ids': [],
+                   'data': {'output': {'messages': state['messages'] + [AIMessage(content='')]}}}
+        with patch.object(self.graph, 'astream_events', side_effect=events):
+            response = self.chat()
+        self.assertIn('event: error', response.text)
+        self.assertNotIn('event: done', response.text)
 
     def test_vercel_service_paths_share_api_and_ownership(self):
         self.assertEqual(self.client.get("/backend/health").status_code, 200)

@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { readSSE } from "../lib/sse.ts";
+import { completedText, readSSE } from "../lib/sse.ts";
 import { parseSessions, mergeSession } from "../lib/history.ts";
 
 function response(chunks) {
@@ -12,6 +12,16 @@ function response(chunks) {
     },
   }), { headers: { "Content-Type": "text/event-stream" } });
 }
+
+test('final answers recover missing tokens and replace partial text without duplication', () => {
+  assert.equal(completedText('', 'Image ready.'), 'Image ready.');
+  assert.equal(completedText('Image', 'Image ready.'), 'Image ready.');
+  assert.equal(completedText('Image ready.', 'Image ready.'), 'Image ready.');
+  assert.equal(completedText('Legacy stream', undefined), 'Legacy stream');
+  assert.throws(() => completedText('', undefined), /without returning an answer/);
+  assert.throws(() => completedText('Partial', ''), /without returning an answer/);
+  assert.throws(() => completedText('', {}), /Invalid final answer/);
+});
 async function collect(chunks) {
   return Array.fromAsync(readSSE(response(chunks), new AbortController().signal));
 }

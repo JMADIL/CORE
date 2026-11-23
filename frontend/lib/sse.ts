@@ -3,6 +3,14 @@ export interface SSEEvent {
   data: Record<string, unknown>;
 }
 
+/** Reconcile a completed answer even if its token events never arrived. */
+export function completedText(streamed: string, content: unknown): string {
+  if (content !== undefined && typeof content !== "string") throw new Error("Invalid final answer received from server.");
+  const final = typeof content === "string" ? content : streamed;
+  if (!final.trim()) throw new Error("Core finished without returning an answer. If media generation started, ask to check its status before generating again.");
+  return final;
+}
+
 /** Parse chunks independently of network boundaries and reject incomplete responses. */
 export async function* readSSE(response: Response, signal: AbortSignal): AsyncGenerator<SSEEvent> {
   if (!response.headers.get("content-type")?.includes("text/event-stream")) {
