@@ -37,7 +37,12 @@ def _oidc_token() -> str:
 
 
 def options(*, force_refresh=False):
-    return ConnectOptions(vercel_token=_oidc_token, force_refresh=force_refresh)
+    # In a container the platform may rotate OIDC through a token file rather
+    # than an environment variable. Let the SDK resolve runtime credentials.
+    return ConnectOptions(
+        vercel_token=None if os.environ.get("VERCEL") else _oidc_token,
+        force_refresh=force_refresh,
+    )
 
 
 async def provider_token(owner: str, *, force_refresh=False) -> str:

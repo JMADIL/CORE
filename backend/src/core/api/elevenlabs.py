@@ -29,8 +29,8 @@ async def connection_status(response: Response, owner: str = Depends(session_own
         return {"enabled": True, "connected": True}
     except (UserAuthorizationRequiredError, AuthorizationPendingError):
         return {"enabled": True, "connected": False}
-    except Exception:
-        logger.warning("ElevenLabs connection status unavailable")
+    except Exception as error:
+        logger.warning("ElevenLabs connection status unavailable (%s)", type(error).__name__)
         raise HTTPException(503, "Could not check ElevenLabs. Please try again later.") from None
 
 
@@ -48,8 +48,8 @@ async def connect_account(response: Response, owner: str = Depends(session_owner
         )
         response.headers["Cache-Control"] = "no-store"
         return {"url": authorization.url}
-    except Exception:
-        logger.warning("ElevenLabs authorization could not start")
+    except Exception as error:
+        logger.warning("ElevenLabs authorization could not start (%s)", type(error).__name__)
         raise HTTPException(503, "Could not start ElevenLabs sign-in. Please try again later.") from None
 
 
@@ -61,6 +61,6 @@ async def disconnect_account(owner: str = Depends(session_owner)):
             options=elevenlabs.options(),
         )
         return Response(status_code=204)
-    except Exception:
-        logger.warning("ElevenLabs disconnect failed")
+    except Exception as error:
+        logger.warning("ElevenLabs disconnect failed (%s)", type(error).__name__)
         raise HTTPException(503, "Could not disconnect ElevenLabs. Please try again later.") from None

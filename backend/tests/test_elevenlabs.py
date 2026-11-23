@@ -1,5 +1,6 @@
 """Account isolation and read-only connection checks; no paid API calls."""
 import unittest
+import os
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -12,6 +13,12 @@ from core.integrations.mcp.config import get_mcp_server_configs
 
 
 class ElevenLabsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_production_uses_sdk_runtime_oidc_resolution(self):
+        with patch.dict(os.environ, {"VERCEL": "1"}):
+            self.assertIsNone(elevenlabs.options().vercel_token)
+        with patch.dict(os.environ, {}, clear=True):
+            self.assertTrue(callable(elevenlabs.options().vercel_token))
+
     async def test_provider_credentials_are_scoped_to_owner_and_resource(self):
         with patch.object(settings, "ELEVENLABS_CONNECTOR", "oauth/test"), patch.object(elevenlabs.connect, "get_token", AsyncMock(return_value="private-token")) as get_token:
             await elevenlabs.provider_token("owner-one")
