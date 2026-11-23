@@ -35,10 +35,10 @@ class SharedMediaTests(unittest.IsolatedAsyncioTestCase):
     async def test_attempt_limits_are_durable_and_expire(self):
         with patch.object(settings, 'ELEVENLABS_DEMO_PER_VISITOR', 1), patch.object(settings, 'ELEVENLABS_DEMO_GLOBAL', 2):
             self.store.reserve_media('a')
-            with self.assertRaises(RateLimitExceeded):
+            with self.assertRaisesRegex(RateLimitExceeded, "this browser's demo limit of 1"):
                 SessionStore(self.store.path).reserve_media('a')
             self.store.reserve_media('b')
-            with self.assertRaises(RateLimitExceeded):
+            with self.assertRaisesRegex(RateLimitExceeded, "site-wide limit of 2"):
                 self.store.reserve_media('c')
             with self.store.connect() as db:
                 db.execute('UPDATE media_requests SET at = 0')

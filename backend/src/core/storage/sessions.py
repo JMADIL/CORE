@@ -129,8 +129,14 @@ class SessionStore:
             db.execute("DELETE FROM media_resources WHERE updated < ?", (now - settings.SESSION_TTL_SECONDS,))
             count = db.execute("SELECT COUNT(*) FROM media_requests WHERE owner = ?", (owner,)).fetchone()[0]
             total = db.execute("SELECT COUNT(*) FROM media_requests").fetchone()[0]
-            if count >= settings.ELEVENLABS_DEMO_PER_VISITOR or total >= settings.ELEVENLABS_DEMO_GLOBAL:
-                raise RateLimitExceeded("The shared media demo has reached its generation limit. Please try again later.")
+            if total >= settings.ELEVENLABS_DEMO_GLOBAL:
+                raise RateLimitExceeded(
+                    f"Core's shared demo has reached its site-wide limit of {settings.ELEVENLABS_DEMO_GLOBAL} media generation attempts per rolling 24 hours. "
+                    "Images, speech, audio and video share this allowance, including failed attempts. Please try again later.")
+            if count >= settings.ELEVENLABS_DEMO_PER_VISITOR:
+                raise RateLimitExceeded(
+                    f"You have reached this browser's demo limit of {settings.ELEVENLABS_DEMO_PER_VISITOR} media generation attempts per rolling 24 hours. "
+                    "Images, speech, audio and video share this allowance, including failed attempts. Please try again later.")
             db.execute("INSERT INTO media_requests VALUES (?, ?)", (owner, now))
 
     def remember_media_resource(self, flow: str, owner: str):
