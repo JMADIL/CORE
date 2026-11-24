@@ -13,8 +13,7 @@ TOOL_QUERY = re.compile(
     r"bibliography|journal|publications?|search|maps?|directions|route|navigate|location|"
     r"distance|nearby|address|geocode|browse|screenshot|scrape|webpage|website|"
     r"reasoning|step-by-step|sequential|music|song|minimax|audio|elevenlabs|elevencreative|"
-    r"voiceover|soundtrack|tts|text-to-speech)\b|"
-    r"\b(?:generate|create|make|edit|animate)\b.{0,100}\b(?:image|picture|video|speech|sound effect)s?\b", re.I,
+    r"voiceover|soundtrack|tts|text-to-speech)\b", re.I,
 )
 FOLLOW_UP = re.compile(r"^(and\b|what about\b|how about\b|also\b|there\b|now\b|same\b)", re.I)
 
@@ -36,7 +35,7 @@ async def supervisor_node(state: AgentState) -> dict:
             # Carry tool intent through a chain of short follow-ups.
             for previous in reversed(humans[:-1]):
                 content = str(previous.content).strip()
-                if TOOL_QUERY.search(content):
+                if TOOL_QUERY.search(content) or requests_media(content):
                     needs_tools = True
                     break
                 if not FOLLOW_UP.search(content):

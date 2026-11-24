@@ -92,6 +92,21 @@ class GraphTests(unittest.IsolatedAsyncioTestCase):
         for query in ["Write a prompt for a monkey image", "Generate a detailed prompt for an image", "Explain video compression", "Tell me about monkeys"]:
             self.assertFalse(requests_media(query), query)
 
+    async def test_informal_image_requests_require_media_tools_in_the_real_graph(self):
+        from core.integrations.elevenlabs import ElevenLabsUnavailable
+        for query in ['generate a banana pic for me', 'Generate banana pics', 'Create a banana photo', 'Make a banana illustration', 'Create a banana portrait']:
+            with self.subTest(query=query):
+                with patch.object(tool_agent, 'discover_tools', AsyncMock(side_effect=ElevenLabsUnavailable(connection_required=True))) as discover:
+                    with self.assertRaises(ElevenLabsUnavailable):
+                        await build_graph().ainvoke({'messages':[HumanMessage(content=query)],'tool_rounds':0},config={'configurable':{'owner':'browser-owner'}})
+                discover.assert_awaited_once_with('browser-owner',require_elevenlabs=True)
+
+    async def test_pic_prompt_writing_and_followups_use_consistent_routing(self):
+        for query in ['Write a prompt for a banana pic', 'Generate a prompt for a banana image', 'Explain how photo compression works']:
+            self.assertEqual((await supervisor_node({'messages':[HumanMessage(content=query)]}))['next_action'],'responder',query)
+        messages=[HumanMessage(content='Generate a banana pic'),AIMessage(content='Image ready.'),HumanMessage(content='And an apple?')]
+        self.assertEqual((await supervisor_node({'messages':messages}))['next_action'],'tool_agent')
+
     async def test_real_graph_passes_browser_authority_to_discovery(self):
         model = AsyncMock()
         model.bind_tools = lambda tools: model
