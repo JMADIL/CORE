@@ -9,7 +9,7 @@ export function imageIdentity(value: string): string {
     const url = new URL(value);
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
-      if (/^(signature|expires|expiration|token|policy|key-pair-id|x-amz-.+|x-goog-.+)$/i.test(key)) url.searchParams.delete(key);
+      if (/^(signature|expires|expiration|token|policy|keyname|key-pair-id|x-amz-.+|x-goog-.+)$/i.test(key)) url.searchParams.delete(key);
     }
     url.searchParams.sort();
     return url.href;
@@ -74,11 +74,11 @@ export function generatedMedia(thoughts: ThoughtNode[]): GeneratedMedia[] {
       return;
     }
     const mime = row.content_mime_type ?? row.mime_type ?? row.mimeType ?? row.content_type;
-    const type = row.media_type ?? row.type;
+    const type = row.media_type ?? row.modality ?? row.kind ?? row.type;
     const kind = typeof mime === "string"
       ? mime.startsWith("image/") ? "image" : mime.startsWith("audio/") ? "audio" : undefined
       : type === "audio" || type === "image" ? type : inherited;
-    for (const field of ["content_url", "image_url", "audio_url", "download_url", "url"]) {
+    for (const field of ["master_url", "content_url", "image_url", "audio_url", "download_url", "url"]) {
       const url = row[field];
       if (typeof url !== "string") continue;
       try {

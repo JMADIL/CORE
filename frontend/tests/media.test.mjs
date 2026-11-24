@@ -95,3 +95,15 @@ test('speech and music results become audio files rather than broken image previ
   assert.equal(generatedMedia(music)[0].kind,'audio');
   assert.deepEqual(generatedMedia([speech,result({generations:[{status:'failed',content_url:sound,content_mime_type:'audio/mpeg'}]})]),[]);
 });
+
+test('actual provider generation and media records share one master file', () => {
+  for (const kind of ['audio','image']) {
+    const master = `https://elevenlabsusercontent.com/generation/master.${kind==='audio'?'mp3':'png'}?Expires=123&KeyName=cdn-key&Signature=signed`;
+    const thought = result({
+      generations:[{id:'same-id',status:'completed',modality:kind,content_url:`https://cdn.example/preview.${kind==='audio'?'mp3':'png'}`}],
+      media:[{generation_id:'same-id',kind,master_url:master}],
+    });
+    assert.deepEqual(generatedMedia([thought]),[{url:master,kind,generationId:'same-id'}]);
+    assert.deepEqual(generatedMedia([result({media:[{generation_id:'same-id',kind,master_url:master}]})]),[{url:master,kind,generationId:'same-id'}]);
+  }
+});
