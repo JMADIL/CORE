@@ -28,6 +28,10 @@ def guard_call(name, arguments, owner, store):
     if name not in SHARED_TOOLS:
         raise SessionAccessDenied("This operation is not available in the shared demo.")
     args = dict(arguments)
+    if name in GENERATIONS:
+        # Hosted creative tools default to multiple variations. Enforce the
+        # demo's single result even when discovery omits optional schema fields.
+        args["generations_count"] = 1
     if name in {"creative_get_flow", "creative_get_flow_node", "creative_get_flow_run_status", "creative_show_flow_results"} and not args.get("flow_id"):
         raise SessionAccessDenied("Choose media created in this browser first.")
 

@@ -86,6 +86,49 @@ class SharedMediaTests(unittest.IsolatedAsyncioTestCase):
         with self.store.connect() as db:
             self.assertEqual(db.execute('SELECT COUNT(*) FROM media_requests').fetchone()[0], 1)
 
+    async def test_generation_count_is_forced_without_relying_on_discovered_schema(self):
+        for name in ['creative_generate_image', 'creative_edit_image', 'creative_generate_speech', 'creative_generate_in_flow']:
+            for count in [None, 2, 4]:
+                args = {'generations_count': count} if count is not None else {}
+                self.assertEqual(guard_call(name, args, 'a', self.store)['generations_count'], 1)
+
+    async def test_tts_runs_once_even_when_the_planner_repeats_it_in_a_later_round(self):
+        self.store.remember_media_resource('voice:a:public-voice', 'a')
+        calls = []
+        async def speech(text: str, voice_id: str, generations_count: int = 4) -> str:
+            """Simulate TTS without spending credits."""
+            calls.append(generations_count)
+            return json.dumps({'all_completed':True, 'generations':[{'id':'tts-one','content_url':'https://files.elevenlabsusercontent.com/tts.mp3','content_mime_type':'audio/mpeg'}]})
+        tool = StructuredTool.from_function(coroutine=speech,name='elevenlabs_creative_generate_speech')
+        model = AsyncMock()
+        model.bind_tools = lambda tools: model
+        model.ainvoke.return_value = AIMessage(content='',tool_calls=[{'name':tool.name,'args':{'text':'Core audio test.','voice_id':'public-voice','generations_count':2},'id':'tts-call'}])
+        state = {'messages':[HumanMessage(content='TTS: Core audio test.')], 'tool_rounds':0}
+        config = {'configurable':{'owner':'a','store':self.store}}
+        with patch.object(tool_agent,'discover_tools',AsyncMock(return_value=[tool])), patch.object(tool_agent,'create_llm',return_value=model):
+            first = await tool_agent.tool_agent_node(state,config)
+            second = await tool_agent.tool_agent_node({'messages':state['messages']+first['messages'],'tool_rounds':1},config)
+        self.assertEqual(calls,[1])
+        self.assertEqual(second['messages'][-1].status,'error')
+
+    async def test_audio_estimate_does_not_block_the_single_real_generation(self):
+        calls = []
+        async def generate(estimate_only: bool = False, generations_count: int = 4) -> str:
+            """Fake sound-effect estimation and generation."""
+            calls.append((estimate_only,generations_count))
+            return json.dumps({'all_completed':True})
+        tool = StructuredTool.from_function(coroutine=generate,name='elevenlabs_creative_generate_in_flow')
+        model = AsyncMock(); model.bind_tools = lambda tools: model
+        model.ainvoke.side_effect = [AIMessage(content='',tool_calls=[{'name':tool.name,'args':{'estimate_only':value},'id':ident}]) for value,ident in [(True,'estimate'),(False,'generate')]]
+        state={'messages':[HumanMessage(content='Create one short sound effect')],'tool_rounds':0}
+        config={'configurable':{'owner':'a','store':self.store}}
+        with patch.object(tool_agent,'discover_tools',AsyncMock(return_value=[tool])), patch.object(tool_agent,'create_llm',return_value=model):
+            first=await tool_agent.tool_agent_node(state,config)
+            await tool_agent.tool_agent_node({'messages':state['messages']+first['messages'],'tool_rounds':1},config)
+        self.assertEqual(calls,[(True,1),(False,1)])
+        with self.store.connect() as db:
+            self.assertEqual(db.execute('SELECT COUNT(*) FROM media_requests').fetchone()[0],1)
+
     async def test_exhausted_demo_never_calls_provider(self):
         async def generate(prompt: str) -> str:
             """Test generation."""

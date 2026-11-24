@@ -8,8 +8,9 @@ import { ThoughtProcess } from "@/components/ThoughtProcess";
 import { Button } from "@/components/ui/button";
 import type { Message } from "@/types/chat";
 import { responseWords } from "@/lib/responseWords";
-import { generatedImages, uniqueImagePreviews } from "@/lib/media";
+import { generatedMedia, uniqueImagePreviews } from "@/lib/media";
 import { ImagePreview } from "@/components/ImagePreview";
+import { AudioPreview } from "@/components/AudioPreview";
 
 const responsePlugins = [responseWords];
 
@@ -23,7 +24,8 @@ export const MessageBubble = memo(function MessageBubble({
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const images = useMemo(() => generatedImages(message.thoughts), [message.thoughts]);
+  const media = useMemo(() => generatedMedia(message.thoughts), [message.thoughts]);
+  const images = media.filter(file => file.kind === "image");
   const imageContext = message.thoughts.some(thought => /elevenlabs_creative_(generate|edit)_image$/.test(thought.name));
   useEffect(() => () => clearTimeout(timer.current), []);
   const copy = async () => {
@@ -66,7 +68,7 @@ export const MessageBubble = memo(function MessageBubble({
         >
           <ReactMarkdown
             remarkPlugins={[remarkGfm]}
-            rehypePlugins={[...responsePlugins, [uniqueImagePreviews, {sources: images.map(image => image.url), imageContext}]]}
+            rehypePlugins={[...responsePlugins, [uniqueImagePreviews, {sources: images.map(image => image.url), imageContext, authoritative: media.length > 0}]]}
             components={{
               table: ({ children }) => (
                 <div className="my-4 max-w-full overflow-x-auto">
@@ -85,7 +87,7 @@ export const MessageBubble = memo(function MessageBubble({
             {message.content}
           </ReactMarkdown>
         </div>
-      ) : message.error ? null : isStreamingActive ? (
+      ) : message.error || media.length ? null : isStreamingActive ? (
         <div role="status" className="flex items-center gap-2 py-2 text-xs text-muted-foreground">
           <span className="response-typing" aria-hidden="true">
             <span />
@@ -97,7 +99,9 @@ export const MessageBubble = memo(function MessageBubble({
       ) : (
         <p className="text-sm text-muted-foreground">Response stopped.</p>
       )}
-      {images.map(image => <ImagePreview key={image.url} src={image.url} />)}
+      {media.map(file => file.kind === "image"
+        ? <ImagePreview key={file.url} src={file.url} />
+        : <AudioPreview key={file.url} src={file.url} />)}
       {message.error && (
         <div
           role="alert"

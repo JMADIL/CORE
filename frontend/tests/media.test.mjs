@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { generatedImages, imageIdentity, imageLink, uniqueImagePreviews } from '../lib/media.ts';
+import { generatedImages, generatedMedia, imageIdentity, imageLink, uniqueImagePreviews } from '../lib/media.ts';
 import { parseSessions } from '../lib/history.ts';
 
 const call = {id:'call', type:'tool_call', name:'elevenlabs_creative_generate_image', timestamp:1};
@@ -68,4 +68,30 @@ test('without tool results a repeated Markdown image/link still renders once; di
   ]};
   uniqueImagePreviews({sources:[],imageContext:true})(tree);
   assert.deepEqual(tree.children.map(node=>node.tagName), ['img','a','img']);
+});
+
+test('one generation with different CDN paths is deduplicated by provider ID', () => {
+  const latest = 'https://another.elevenlabsusercontent.com/a-new-path?token=fresh';
+  const thoughts = [call, result({generations:[{id:'generation-1',content_url:url}]}), result({generations:[{id:'generation-1',content_url:latest}]})];
+  assert.deepEqual(generatedMedia(thoughts), [{url:latest,kind:'image',generationId:'generation-1'}]);
+  thoughts.push(result({generations:[{id:'generation-2',content_url:'https://example.com/second.png'}]}));
+  assert.equal(generatedMedia(thoughts).length,2);
+});
+
+test('tool files are authoritative when the writer repeats the image at a different URL', () => {
+  const tree = {type:'root',children:[{type:'element',tagName:'img',properties:{src:'https://other.example/duplicate.png'}}, {type:'element',tagName:'a',properties:{href:'https://other.example/duplicate.png'}}]};
+  uniqueImagePreviews({sources:[url],imageContext:true,authoritative:true})(tree);
+  assert.deepEqual(tree.children.map(node=>node.tagName),['a']);
+});
+
+test('speech and music results become audio files rather than broken image previews', () => {
+  const speech = {id:'speech',type:'tool_call',name:'elevenlabs_creative_generate_speech',timestamp:3};
+  const sound = 'https://files.elevenlabsusercontent.com/speech?token=audio';
+  const thoughts = [speech, result({generations:[{id:'speech-1',status:'completed',content_url:sound,content_mime_type:'audio/mpeg'}]})];
+  assert.deepEqual(generatedMedia(thoughts),[{url:sound,kind:'audio',generationId:'speech-1'}]);
+  assert.deepEqual(generatedImages(thoughts),[]);
+  assert.deepEqual(generatedMedia([result({audio_url:sound})]),[{url:sound,kind:'audio'}]);
+  const music=[{...speech,name:'elevenlabs_creative_generate_in_flow'},result({generations:[{id:'music-1',status:'completed',content_url:sound,content_mime_type:'audio/wav'}]})];
+  assert.equal(generatedMedia(music)[0].kind,'audio');
+  assert.deepEqual(generatedMedia([speech,result({generations:[{status:'failed',content_url:sound,content_mime_type:'audio/mpeg'}]})]),[]);
 });

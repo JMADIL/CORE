@@ -74,7 +74,7 @@ class GraphTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["next_action"], "responder", text)
 
     async def test_media_requests_reach_tool_agent(self):
-        for text in ["Generate an image of a cat", "Create a video of a beach", "Make a voiceover", "Use ElevenLabs"]:
+        for text in ["Generate an image of a cat", "Create a video of a beach", "Make a voiceover", "Use ElevenLabs", "TTS: Hello", "Text to speech: Hello", "Generate a sound effect"]:
             result = await supervisor_node({"messages": [HumanMessage(content=text)]})
             self.assertEqual(result["next_action"], "tool_agent", text)
 

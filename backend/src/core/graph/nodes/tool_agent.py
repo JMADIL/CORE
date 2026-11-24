@@ -50,11 +50,14 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
          if settings.ELEVENLABS_SHARED_ACCOUNT else "ElevenLabs generations spend the connected user's credits. ") +
         "Use the available ElevenLabs tools for media requests instead of claiming you cannot "
         "generate images or audio. Your base model's text-only output does not limit these tools. "
+        "Request exactly one variation (generations_count=1) in the shared demo. "
+        "For speech synthesis, use creative_generate_speech; for music or sound effects, "
+        "use creative_generate_in_flow after reading the appropriate node/model schema. "
+        "Only use a voice_id returned by creative_list_voices or supplied by the user. "
         "Only start a generation when the user explicitly requests media creation. Never repeat a generation that "
-        "is still running; inspect its status instead. Return available download links, "
+        "is still running; inspect its status instead. Return available download links and describe pending work honestly. "
         "When asked to show or check earlier media, reuse the existing flow_id and session_ids "
-        "from previous tool results and call the read-only status tool; do not generate again. "
-        "and describe pending work honestly. " +
+        "from previous tool results and call the read-only status tool; do not generate again. " +
         ("If shared tools are unavailable, say the shared demo is temporarily unavailable. "
          "Visitors do not connect an account. " if settings.ELEVENLABS_SHARED_ACCOUNT else
          "If ElevenLabs tools are unavailable, tell the user to connect ElevenLabs in the sidebar.")
@@ -63,7 +66,11 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
     messages = [response]
     tool_map = {tool.name: tool for tool in tools}
     last_user = max((i for i, m in enumerate(state["messages"]) if isinstance(m, HumanMessage)), default=-1)
-    generated = any(isinstance(m, ToolMessage) and (m.name or "").removeprefix("elevenlabs_") in GENERATIONS for m in state["messages"][last_user + 1:])
+    turn = state["messages"][last_user + 1:]
+    estimates = {call["id"] for message in turn if isinstance(message, AIMessage)
+                 for call in message.tool_calls if call["args"].get("estimate_only") is True}
+    generated = any(isinstance(m, ToolMessage) and m.tool_call_id not in estimates
+                    and (m.name or "").removeprefix("elevenlabs_") in GENERATIONS for m in turn)
     for index, call in enumerate(response.tool_calls):
         status = "success"
         try:
@@ -76,9 +83,7 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
             if shared:
                 args = await asyncio.to_thread(guard_call, call["name"], args, owner, store)
                 if call["name"].removeprefix("elevenlabs_") in GENERATIONS:
-                    if "generations_count" in tool_map[call["name"]].args:
-                        args["generations_count"] = 1
-                    if not args.get("estimate_only"):
+                    if args.get("estimate_only") is not True:
                         if generated:
                             raise SessionAccessDenied("The demo allows one generation per message. Check its status instead of generating again.")
                         await asyncio.to_thread(store.reserve_media, owner)
@@ -88,7 +93,7 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
             output = text_content(output) if isinstance(output, (str, list)) else str(output)
             if shared:
                 await asyncio.to_thread(remember_results, output, owner, store)
-            if call["name"].startswith("elevenlabs_") and call["name"].removeprefix("elevenlabs_") in GENERATIONS and not args.get("estimate_only"):
+            if call["name"].startswith("elevenlabs_") and call["name"].removeprefix("elevenlabs_") in GENERATIONS and args.get("estimate_only") is not True:
                 output = await complete_media_run(output, tool_map, owner, store)
             limit = 12000 if call["name"].startswith(("research_", "elevenlabs_")) else 4000
             if len(output) > limit:
