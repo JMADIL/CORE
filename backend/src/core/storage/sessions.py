@@ -120,24 +120,41 @@ class SessionStore:
                 raise SessionBusy("Wait for the active response before deleting this thread")
             db.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
 
-    def reserve_media(self, owner: str):
+    def reserve_media(self, owner: str, *, kind: str = "media"):
         """Count attempts atomically before a paid call, including uncertain failures."""
+        if kind not in {"media", "speech"}:
+            raise ValueError("Unknown media allowance")
+        speech = kind == "speech"
+        # Browser owners are server-hashed identifiers. A reserved internal
+        # prefix isolates speech counters without altering the existing schema.
+        # Legacy rows retain their existing media allowance and expiry.
+        counter_owner = "tts:" + owner if speech else owner
+        comparison = "LIKE" if speech else "NOT LIKE"
+        per_visitor = settings.ELEVENLABS_TTS_DEMO_PER_VISITOR if speech else settings.ELEVENLABS_DEMO_PER_VISITOR
+        site_limit = settings.ELEVENLABS_TTS_DEMO_GLOBAL if speech else settings.ELEVENLABS_DEMO_GLOBAL
+        allowance = "speech demo" if speech else "demo"
+        attempts = "TTS attempts" if speech else "media generation attempts"
+        explanation = (
+            "This speech allowance is separate from images and other media. Failed speech attempts also count. "
+            if speech else
+            "Images, music, sound effects and video share this allowance, including failed attempts. Text-to-speech has its own allowance. "
+        )
         now = time.time()
         with self.connect() as db:
             self.begin_write(db)
             db.execute("DELETE FROM media_requests WHERE at < ?", (now - 86400,))
             db.execute("DELETE FROM media_resources WHERE updated < ?", (now - settings.SESSION_TTL_SECONDS,))
-            count = db.execute("SELECT COUNT(*) FROM media_requests WHERE owner = ?", (owner,)).fetchone()[0]
-            total = db.execute("SELECT COUNT(*) FROM media_requests").fetchone()[0]
-            if total >= settings.ELEVENLABS_DEMO_GLOBAL:
+            count = db.execute("SELECT COUNT(*) FROM media_requests WHERE owner = ?", (counter_owner,)).fetchone()[0]
+            total = db.execute(f"SELECT COUNT(*) FROM media_requests WHERE owner {comparison} ?", ("tts:%",)).fetchone()[0]
+            if total >= site_limit:
                 raise RateLimitExceeded(
-                    f"Core's shared demo has reached its site-wide limit of {settings.ELEVENLABS_DEMO_GLOBAL} media generation attempts per rolling 24 hours. "
-                    "Images, speech, audio and video share this allowance, including failed attempts. Please try again later.")
-            if count >= settings.ELEVENLABS_DEMO_PER_VISITOR:
+                    f"Core's shared {allowance} has reached its site-wide limit of {site_limit} {attempts} per rolling 24 hours. "
+                    + explanation + "Please try again later.")
+            if count >= per_visitor:
                 raise RateLimitExceeded(
-                    f"You have reached this browser's demo limit of {settings.ELEVENLABS_DEMO_PER_VISITOR} media generation attempts per rolling 24 hours. "
-                    "Images, speech, audio and video share this allowance, including failed attempts. Please try again later.")
-            db.execute("INSERT INTO media_requests VALUES (?, ?)", (owner, now))
+                    f"You have reached this browser's {allowance} limit of {per_visitor} {attempts} per rolling 24 hours. "
+                    + explanation + "Please try again later.")
+            db.execute("INSERT INTO media_requests VALUES (?, ?)", (counter_owner, now))
 
     def remember_media_resource(self, flow: str, owner: str):
         with self.connect() as db:

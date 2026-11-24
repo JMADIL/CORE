@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     ELEVENLABS_OWNER_SETUP_HASH: str = ""
     ELEVENLABS_DEMO_PER_VISITOR: int = Field(default=5, ge=1, le=1000)
     ELEVENLABS_DEMO_GLOBAL: int = Field(default=20, ge=1, le=10000)
+    ELEVENLABS_TTS_DEMO_PER_VISITOR: int = Field(default=5, ge=1, le=1000)
+    ELEVENLABS_TTS_DEMO_GLOBAL: int = Field(default=20, ge=1, le=10000)
     CORE_PUBLIC_URL: str = ""
 
     model_config = SettingsConfigDict(env_file=REPOSITORY_ROOT / ".env", extra="ignore")

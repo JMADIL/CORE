@@ -86,7 +86,8 @@ async def tool_agent_node(state: AgentState, config: RunnableConfig = None) -> d
                     if args.get("estimate_only") is not True:
                         if generated:
                             raise SessionAccessDenied("The demo allows one generation per message. Check its status instead of generating again.")
-                        await asyncio.to_thread(store.reserve_media, owner)
+                        allowance = "speech" if call["name"] == "elevenlabs_creative_generate_speech" else "media"
+                        await asyncio.to_thread(store.reserve_media, owner, kind=allowance)
                         generated = True
             async with asyncio.timeout(settings.TOOL_TIMEOUT_SECONDS):
                 output = await tool_map[call["name"]].ainvoke(args)

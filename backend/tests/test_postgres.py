@@ -45,6 +45,21 @@ class PostgresTests(unittest.TestCase):
         with self.assertRaises(SessionAccessDenied):
             other.check_media_resource("flow:mine", "different-visitor")
 
+    def test_speech_cap_is_independent_and_atomic_across_instances(self):
+        def reserve(index):
+            try:
+                PostgresSessionStore(self.url).reserve_media(f'visitor-{index}', kind='speech')
+                return True
+            except RateLimitExceeded:
+                return False
+        with patch.object(settings, 'ELEVENLABS_DEMO_GLOBAL', 1), patch.object(settings, 'ELEVENLABS_TTS_DEMO_GLOBAL', 2):
+            self.store.reserve_media('visitor-0')
+            with ThreadPoolExecutor(max_workers=6) as pool:
+                results = list(pool.map(reserve, range(6)))
+            self.assertEqual(sum(results), 2)
+            with self.assertRaisesRegex(RateLimitExceeded, 'media generation attempts'):
+                self.store.reserve_media('another-visitor')
+
     def test_concurrent_claims_have_one_winner(self):
         def claim(_):
             try:

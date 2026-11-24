@@ -44,6 +44,24 @@ class SharedMediaTests(unittest.IsolatedAsyncioTestCase):
                 db.execute('UPDATE media_requests SET at = 0')
             self.store.reserve_media('a')
 
+    async def test_speech_and_existing_media_allowances_are_independent_and_durable(self):
+        with patch.object(settings, 'ELEVENLABS_DEMO_PER_VISITOR', 1), patch.object(settings, 'ELEVENLABS_DEMO_GLOBAL', 1), patch.object(settings, 'ELEVENLABS_TTS_DEMO_PER_VISITOR', 1), patch.object(settings, 'ELEVENLABS_TTS_DEMO_GLOBAL', 2):
+            self.store.reserve_media('a')
+            reopened = SessionStore(self.store.path)
+            reopened.reserve_media('a', kind='speech')
+            with self.assertRaisesRegex(RateLimitExceeded, 'speech demo limit of 1 TTS attempts'):
+                reopened.reserve_media('a', kind='speech')
+            reopened.reserve_media('b', kind='speech')
+            with self.assertRaisesRegex(RateLimitExceeded, 'site-wide limit of 2 TTS attempts'):
+                reopened.reserve_media('c', kind='speech')
+            with self.assertRaisesRegex(RateLimitExceeded, 'site-wide limit of 1 media generation attempts'):
+                reopened.reserve_media('b')
+            with reopened.connect() as db:
+                db.execute('UPDATE media_requests SET at = 0 WHERE owner = ?', ('tts:a',))
+            SessionStore(self.store.path).reserve_media('a', kind='speech')
+        with self.assertRaises(ValueError):
+            self.store.reserve_media('a', kind='unrecognized')
+
     async def test_resources_from_another_visitor_or_owner_workspace_are_rejected(self):
         payload = {'flow_id': 'flow-a', 'node_id': 'node-a', 'session_ids': ['run-a'], 'generations': [{'id': 'gen-a'}]}
         remember_results(json.dumps(payload), 'a', self.store)
@@ -93,6 +111,9 @@ class SharedMediaTests(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(guard_call(name, args, 'a', self.store)['generations_count'], 1)
 
     async def test_tts_runs_once_even_when_the_planner_repeats_it_in_a_later_round(self):
+        # A browser already at its image/media cap must still be able to use TTS.
+        for _ in range(settings.ELEVENLABS_DEMO_PER_VISITOR):
+            self.store.reserve_media('a')
         self.store.remember_media_resource('voice:a:public-voice', 'a')
         calls = []
         async def speech(text: str, voice_id: str, generations_count: int = 4) -> str:
