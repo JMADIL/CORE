@@ -1,6 +1,6 @@
 """Owner-only shared ElevenLabs setup. Never prints provider tokens or API keys.
 
-Run: uv run --project backend python scripts/connect_shared_elevenlabs.py
+Run: uv run --project backend core-elevenlabs-setup
 Then authorize the returned one-time link. Use --check to verify the grant.
 """
 import argparse
@@ -58,8 +58,12 @@ async def main():
         print('Owner authorization URL:', authorization.url)
         if authorization.device_code:
             print('One-time confirmation code:', authorization.device_code)
-        print('Sign in with the account whose credits you want visitors to use. Then run this script with --check.')
+        print('Sign in with the account whose credits you want visitors to use. Then run core-elevenlabs-setup --check.')
+
+
+def run():
+    asyncio.run(main())
 
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    run()

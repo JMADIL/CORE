@@ -22,6 +22,7 @@ dependencies = [
 
 [project.scripts]
 core-api = "core.main:run"
+core-elevenlabs-setup = "core.integrations.elevenlabs_setup:run"
 
 [build-system]
 requires = ["setuptools>=68"]
