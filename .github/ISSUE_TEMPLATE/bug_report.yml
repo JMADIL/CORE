@@ -1,0 +1,33 @@
+name: Bug report
+description: Report a reproducible problem in Core.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: "For vulnerabilities, follow the security policy. Do not include credentials, private conversations, or unredacted logs."
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the problem and what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Use a minimal example with synthetic data.
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Include browser, OS, local or hosted setup, and commit if known.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Screenshots or redacted errors
+      description: Optional supporting evidence. Remove tokens and personal data.

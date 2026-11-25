@@ -1,15 +1,22 @@
 # Core — Multi-Agent Chatbot
 
+[![CI](https://github.com/JMADIL/CORE/actions/workflows/ci.yml/badge.svg)](https://github.com/JMADIL/CORE/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB.svg)](backend/pyproject.toml)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6.svg)](frontend/package.json)
+
 **Core** stands for **Collaborative Orchestration & Reasoning Engine**.
 
 A chat application combining LangGraph agents, MCP tools, a FastAPI streaming
 backend, and a Next.js interface. It supports research, generated images, and
 speech/audio playback through ElevenLabs.
 
-[Live application](https://core-xi-puce.vercel.app) · [Run locally](#run-locally) · [Deployment](#deployment)
+[Live application](https://core-xi-puce.vercel.app) · [Run locally](#run-locally) · [Deployment](#deployment) · [Contributing](.github/CONTRIBUTING.md) · [Security](.github/SECURITY.md)
 
 The shared media demo uses the owner's ElevenLabs credits. Visitors do not need
 an ElevenLabs account; public demo allowances and provider limits apply.
+
+Built by [Adil Jamoun (@JMADIL)](https://github.com/JMADIL). Licensed under the [MIT License](LICENSE).
 
 ## Contents
 
