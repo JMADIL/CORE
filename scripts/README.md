@@ -1,5 +1,12 @@
 # Manual integration checks
 
+These scripts are optional developer diagnostics and owner setup tools. They are
+not part of normal application startup or the automated CI tests.
+
+`connect_shared_elevenlabs.py` manages the owner's ElevenLabs consent. Its
+production and local setup instructions are in the consolidated
+[ElevenLabs guide](../docs/README.md#elevenlabs).
+
 Run from the repository root after `uv sync --project backend --frozen`:
 
 ```sh

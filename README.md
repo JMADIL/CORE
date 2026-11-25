@@ -5,12 +5,15 @@ Core stands for **Collaborative Orchestration & Reasoning Engine**.
 A chat application using LangGraph orchestration, MCP tools, a FastAPI streaming API, and a Next.js interface.
 
 Deploy both application services on Vercel with Neon PostgreSQL using the
-[Vercel deployment guide](docs/deploy-vercel.md).
+[Vercel deployment guide](docs/README.md#deployment).
 
 Core's public media demo uses the owner's ElevenLabs credits; visitors do not
 need an ElevenLabs account. The owner authorizes the shared account once through
 Vercel Connect. Personal-account mode remains configurable. See the
-[ElevenLabs setup guide](docs/elevenlabs.md) for deployment and local setup.
+[ElevenLabs setup guide](docs/README.md#elevenlabs) for deployment and local setup.
+
+See the [documentation and screenshot gallery](docs/README.md#screenshots) for
+examples of chat streaming, research tools, generated images, and speech playback.
 
 ## Repository layout
 
@@ -24,7 +27,9 @@ backend/                 Python project, dependency lock, tests, and Dockerfile
     storage/             SQLite sessions, retention, and transport-free errors
 frontend/                Next.js app, components, hooks, utilities, and shared types
 scripts/                 Explicit manual/live integration checks
-docs/                   Current architecture and archived plans
+docs/
+  README.md              Consolidated guides, screenshots, and historical plans
+  assets/screenshots/    Project screenshots used by the documentation
 ```
 
 The root `.env` is shared configuration for local development and Compose. The
@@ -150,4 +155,5 @@ Frontend: port 3000. Backend: port 8000. Compose uses the internal backend hostn
 
 SQLite supports multiple workers on one host with a shared local database file. Multiple independently hosted backend replicas need a shared database and coordination strategy rather than separate SQLite files. Add user authentication at the gateway before offering private user accounts.
 
-See [current architecture](docs/architecture.md) for module responsibilities. Original plans are retained in [docs/archive](docs/archive).
+See the [architecture guide](docs/README.md#architecture) for module responsibilities.
+Original plans are retained in the [historical notes](docs/README.md#historical-notes).

@@ -15,4 +15,4 @@ Source checkouts read the repository root `.env`; relative SQLite paths also res
 from the repository root. Docker receives configuration through environment variables.
 
 See the [project README](../README.md) for configuration, tool installation, Docker,
-and API details, and [architecture](../docs/architecture.md) for module responsibilities.
+and API details, and [architecture](../docs/README.md#architecture) for module responsibilities.
