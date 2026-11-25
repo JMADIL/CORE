@@ -129,8 +129,8 @@ ehthumbs.db
 Thumbs.db
 
 # IDEs and editors
-.idea/
-.vscode/
+.idea
+.vscode
 *.swp
 *.swo
 
@@ -145,3 +145,14 @@ out/
 .data/
 *.tsbuildinfo
 .env*
+!.env.example
+
+# Machine-specific shell, Git, search and MCP configuration.
+/.bash_profile
+/.bashrc
+/.zprofile
+/.zshrc
+/.profile
+/.gitconfig
+/.ripgreprc
+/.mcp.json

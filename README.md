@@ -105,6 +105,18 @@ SSE events: `agent_state`, `tool_call`, `tool_result`, `token`, `error`, and `do
 
 Request validation rejects empty/blank messages, messages over 12,000 characters, and bodies over 64 KiB. Per-source-IP and global per-minute limits apply to accepted chat requests; limits and leases are shared by workers through SQLite. Set ASGI's trusted proxy list explicitly when deploying behind a reverse proxy. Clients behind the same unconfigured proxy share its IP budget. Configure all timeouts together if you raise the default 120-second backend timeout: the frontend proxy and browser currently allow 150 seconds.
 
+## Automated checks and secrets
+
+GitHub Actions runs backend tests against SQLite and a disposable PostgreSQL
+service, frontend lint/tests/build/type checking, and a full-history Gitleaks scan
+on pushes to `main` and pull requests. The jobs use read-only repository
+permissions and do not receive production credentials or call media providers.
+
+Keep credentials in ignored local environment files or deployment settings.
+Only `.env.example` is tracked. Machine-specific shell, Git, editor and local MCP
+configuration should stay outside the repository. For a public repository, also
+enable GitHub secret scanning and push protection in its security settings.
+
 ## Tests
 
 Offline regression suite, with no provider credentials or network services required:
